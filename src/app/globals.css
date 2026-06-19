@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'IBM Plex Sans Bold';
+  src: url('/fonts/IBMPlexSans-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('/fonts/IBMPlexSans-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans Condensed';
+  src: url('/fonts/IBMPlexSans_Condensed-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+}
+
+@theme {
+  --color-vulcanico: #FF4103;
+  --color-concrete: #555555;
+  --color-noturno: #001621;
+
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'IBM Plex Sans Bold', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Sans Condensed', ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --background: #001621;
+  --foreground: #ffffff;
+}
+
+html, body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+/* Hide scrollbar for brutalist PWA look */
+::-webkit-scrollbar {
+  display: none;
+}
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Remove default OS layout/spinners for numeric inputs */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
