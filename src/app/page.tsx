@@ -20,8 +20,15 @@ import {
   Check,
   Edit3,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Cloud,
+  CloudOff,
+  RefreshCw,
+  Database,
+  User as UserIcon
 } from "lucide-react";
+import { supabase } from "./supabase";
+import { User as SupabaseUser } from "@supabase/supabase-js";
 
 // --- TYPES ---
 type Tab = "plans" | "exercises" | "history";
@@ -213,6 +220,15 @@ export default function AppContainer() {
   const [isAddingFocusModalOpen, setIsAddingFocusModalOpen] = useState(false);
   const [hoveredLogIdx, setHoveredLogIdx] = useState<number | null>(null);
 
+  // Supabase Auth and Sync States
+  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
+  const [lastSyncedTime, setLastSyncedTime] = useState<number | null>(null);
+
   // Load state from local storage on mount
   useEffect(() => {
     const storedEx = localStorage.getItem("is_exercises_v3");
@@ -247,16 +263,512 @@ export default function AppContainer() {
     setIsLoaded(true);
   }, []);
 
-  // Save states to local storage when changed
+  // Supabase Auth session listener
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // --- SUPABASE SYNCHRONIZATION HELPERS ---
+  const pushCustomExercisesToSupabase = async (userId: string, localExercises: ExerciseDef[]) => {
+    try {
+      const customLocal = localExercises.filter(ex => ex.id.startsWith("ex_"));
+      if (customLocal.length === 0) return;
+
+      const toUpsert = customLocal.map(ex => ({
+        id: ex.id,
+        name: ex.name,
+        muscle: ex.muscle,
+        user_id: userId
+      }));
+      await supabase.from("exercises").upsert(toUpsert);
+    } catch (e) {
+      console.error("pushCustomExercisesToSupabase error:", e);
+    }
+  };
+
+  const pullCustomExercisesFromSupabase = async (userId: string): Promise<ExerciseDef[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("exercises")
+        .select("id, name, muscle")
+        .eq("user_id", userId);
+
+      if (error) throw error;
+      if (!data) return [];
+      return data.map((ex: any) => ({
+        id: ex.id,
+        name: ex.name,
+        muscle: ex.muscle
+      }));
+    } catch (e) {
+      console.error("pullCustomExercisesFromSupabase error:", e);
+      return [];
+    }
+  };
+
+  const pushPlansToSupabase = async (userId: string, localPlans: Plan[]) => {
+    try {
+      if (localPlans.length === 0) return;
+
+      // 1. Upsert plans
+      const plansToUpsert = localPlans.map(p => ({
+        id: p.id,
+        name: p.name,
+        user_id: userId
+      }));
+      const { error: pErr } = await supabase.from("plans").upsert(plansToUpsert);
+      if (pErr) throw pErr;
+
+      // 2. Upsert workouts
+      const workoutsToUpsert: any[] = [];
+      localPlans.forEach(p => {
+        p.workouts.forEach((w, wIdx) => {
+          workoutsToUpsert.push({
+            id: w.id,
+            plan_id: p.id,
+            name: w.name,
+            order_index: wIdx
+          });
+        });
+      });
+      if (workoutsToUpsert.length > 0) {
+        const { error: wErr } = await supabase.from("workouts").upsert(workoutsToUpsert);
+        if (wErr) throw wErr;
+      }
+
+      // 3. Upsert planned exercises
+      const peToUpsert: any[] = [];
+      localPlans.forEach(p => {
+        p.workouts.forEach(w => {
+          w.exercises.forEach((pe, peIdx) => {
+            peToUpsert.push({
+              id: pe.id,
+              workout_id: w.id,
+              exercise_id: pe.exerciseId,
+              order_index: peIdx
+            });
+          });
+        });
+      });
+      if (peToUpsert.length > 0) {
+        const { error: peErr } = await supabase.from("planned_exercises").upsert(peToUpsert);
+        if (peErr) throw peErr;
+      }
+
+      // 4. Upsert planned sets
+      const psToUpsert: any[] = [];
+      localPlans.forEach(p => {
+        p.workouts.forEach(w => {
+          w.exercises.forEach(pe => {
+            pe.sets.forEach((s, sIdx) => {
+              psToUpsert.push({
+                id: s.id,
+                planned_exercise_id: pe.id,
+                min_reps: s.minReps,
+                max_reps: s.maxReps,
+                rest_seconds: s.restSeconds,
+                is_drop_set: s.isDropSet,
+                is_to_failure: s.isToFailure,
+                method_type: s.methodType || null,
+                custom_method_name: s.customMethodName || null,
+                drop_count: s.dropCount || null,
+                rest_pause_sets: s.restPauseSets || null,
+                rest_pause_seconds: s.restPauseSeconds || null,
+                failure_type: s.failureType || null,
+                order_index: sIdx
+              });
+            });
+          });
+        });
+      });
+      if (psToUpsert.length > 0) {
+        const { error: psErr } = await supabase.from("planned_sets").upsert(psToUpsert);
+        if (psErr) throw psErr;
+      }
+    } catch (e) {
+      console.error("pushPlansToSupabase error:", e);
+    }
+  };
+
+  const pullPlansFromSupabase = async (userId: string): Promise<Plan[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("plans")
+        .select(`
+          id, name,
+          workouts (
+            id, name, order_index,
+            planned_exercises (
+              id, exercise_id, order_index,
+              planned_sets (
+                id, min_reps, max_reps, rest_seconds, is_drop_set, is_to_failure,
+                method_type, custom_method_name, drop_count, rest_pause_sets, rest_pause_seconds, failure_type, order_index
+              )
+            )
+          )
+        `)
+        .eq("user_id", userId);
+
+      if (error) throw error;
+      if (!data) return [];
+
+      return data.map((p: any) => {
+        const workouts = (p.workouts || []).map((w: any) => {
+          const exercises = (w.planned_exercises || []).map((pe: any) => {
+            const sets = (pe.planned_sets || []).map((s: any) => ({
+              id: s.id,
+              minReps: s.min_reps,
+              maxReps: s.max_reps,
+              restSeconds: s.rest_seconds,
+              isDropSet: s.is_drop_set,
+              isToFailure: s.is_to_failure,
+              methodType: s.method_type,
+              customMethodName: s.custom_method_name,
+              dropCount: s.drop_count,
+              restPauseSets: s.rest_pause_sets,
+              restPauseSeconds: s.rest_pause_seconds,
+              failureType: s.failure_type,
+              order_index: s.order_index
+            })).sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
+
+            return {
+              id: pe.id,
+              exerciseId: pe.exercise_id,
+              sets,
+              order_index: pe.order_index
+            };
+          }).sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
+
+          return {
+            id: w.id,
+            name: w.name,
+            exercises,
+            order_index: w.order_index
+          };
+        }).sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
+
+        return {
+          id: p.id,
+          name: p.name,
+          workouts
+        };
+      });
+    } catch (e) {
+      console.error("pullPlansFromSupabase error:", e);
+      return [];
+    }
+  };
+
+  const pushHistoryToSupabase = async (userId: string, localHistory: HistoryLog[]) => {
+    try {
+      if (localHistory.length === 0) return;
+
+      // 1. Upsert history logs
+      const logsToUpsert = localHistory.map(log => ({
+        id: log.id,
+        user_id: userId,
+        name: log.name,
+        date: log.date,
+        duration_ms: log.durationMs,
+        volume_kg: log.volumeKg
+      }));
+      const { error: lErr } = await supabase.from("history_logs").upsert(logsToUpsert);
+      if (lErr) throw lErr;
+
+      // 2. Upsert log exercises
+      const exercisesToUpsert: any[] = [];
+      localHistory.forEach(log => {
+        log.exercises.forEach((ex, exIdx) => {
+          const hleId = `hle_${log.id}_${exIdx}`;
+          exercisesToUpsert.push({
+            id: hleId,
+            history_log_id: log.id,
+            name: ex.name,
+            elapsed_seconds: ex.elapsedSeconds || 0,
+            order_index: exIdx
+          });
+        });
+      });
+      if (exercisesToUpsert.length > 0) {
+        const { error: exErr } = await supabase.from("history_log_exercises").upsert(exercisesToUpsert);
+        if (exErr) throw exErr;
+      }
+
+      // 3. Upsert log sets
+      const setsToUpsert: any[] = [];
+      localHistory.forEach(log => {
+        log.exercises.forEach((ex, exIdx) => {
+          const hleId = `hle_${log.id}_${exIdx}`;
+          ex.sets.forEach((s, sIdx) => {
+            const hlsId = `hls_${hleId}_${sIdx}`;
+            setsToUpsert.push({
+              id: hlsId,
+              history_log_exercise_id: hleId,
+              min_reps: s.minReps,
+              max_reps: s.maxReps,
+              is_drop_set: s.isDropSet,
+              is_to_failure: s.isToFailure,
+              weight: s.weight,
+              reps: s.reps,
+              method_type: s.methodType || null,
+              custom_method_name: s.customMethodName || null,
+              drop_count: s.dropCount || null,
+              rest_pause_sets: s.restPauseSets || null,
+              rest_pause_seconds: s.restPauseSeconds || null,
+              failure_type: s.failureType || null,
+              order_index: sIdx
+            });
+          });
+        });
+      });
+      if (setsToUpsert.length > 0) {
+        const { error: sErr } = await supabase.from("history_log_sets").upsert(setsToUpsert);
+        if (sErr) throw sErr;
+      }
+    } catch (e) {
+      console.error("pushHistoryToSupabase error:", e);
+    }
+  };
+
+  const pullHistoryFromSupabase = async (userId: string): Promise<HistoryLog[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("history_logs")
+        .select(`
+          id, name, date, duration_ms, volume_kg,
+          history_log_exercises (
+            id, name, elapsed_seconds, order_index,
+            history_log_sets (
+              id, min_reps, max_reps, is_drop_set, is_to_failure, weight, reps,
+              method_type, custom_method_name, drop_count, rest_pause_sets, rest_pause_seconds, failure_type, order_index
+            )
+          )
+        `)
+        .eq("user_id", userId);
+
+      if (error) throw error;
+      if (!data) return [];
+
+      return data.map((log: any) => {
+        const exercises = (log.history_log_exercises || []).map((ex: any) => {
+          const sets = (ex.history_log_sets || []).map((s: any) => ({
+            minReps: s.min_reps,
+            maxReps: s.max_reps,
+            isDropSet: s.is_drop_set,
+            isToFailure: s.is_to_failure,
+            weight: s.weight,
+            reps: s.reps,
+            methodType: s.method_type,
+            customMethodName: s.custom_method_name,
+            dropCount: s.drop_count,
+            restPauseSets: s.rest_pause_sets,
+            restPauseSeconds: s.rest_pause_seconds,
+            failureType: s.failure_type,
+            order_index: s.order_index
+          })).sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
+
+          return {
+            name: ex.name,
+            elapsedSeconds: ex.elapsed_seconds,
+            sets,
+            order_index: ex.order_index
+          };
+        }).sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
+
+        return {
+          id: log.id,
+          name: log.name,
+          date: parseInt(log.date) || Date.now(),
+          durationMs: log.duration_ms,
+          volumeKg: log.volume_kg,
+          exercises
+        };
+      });
+    } catch (e) {
+      console.error("pullHistoryFromSupabase error:", e);
+      return [];
+    }
+  };
+
+  const pushFocusedExercisesToSupabase = async (userId: string, localFocus: string[]) => {
+    try {
+      if (localFocus.length === 0) return;
+      const focusToUpsert = localFocus.map(name => ({
+        user_id: userId,
+        exercise_name: name
+      }));
+      await supabase.from("focused_exercises").upsert(focusToUpsert);
+    } catch (e) {
+      console.error("pushFocusedExercisesToSupabase error:", e);
+    }
+  };
+
+  const pullFocusedExercisesFromSupabase = async (userId: string): Promise<string[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("focused_exercises")
+        .select("exercise_name")
+        .eq("user_id", userId);
+
+      if (error) throw error;
+      if (!data) return [];
+      return data.map((item: any) => item.exercise_name);
+    } catch (e) {
+      console.error("pullFocusedExercisesFromSupabase error:", e);
+      return [];
+    }
+  };
+
+  const syncAllData = async (currentUser: SupabaseUser) => {
+    setSyncStatus("syncing");
+    try {
+      // 1. Exercises
+      await pushCustomExercisesToSupabase(currentUser.id, exercises);
+      const pulledCustom = await pullCustomExercisesFromSupabase(currentUser.id);
+      setExercises(prev => {
+        const merged = [...prev];
+        pulledCustom.forEach(pe => {
+          if (!merged.some(me => me.id === pe.id)) {
+            merged.push(pe);
+          }
+        });
+        return merged;
+      });
+
+      // 2. Plans
+      await pushPlansToSupabase(currentUser.id, plans);
+      const pulledPlans = await pullPlansFromSupabase(currentUser.id);
+      setPlans(prev => {
+        const merged = [...prev];
+        pulledPlans.forEach(pp => {
+          const idx = merged.findIndex(mp => mp.id === pp.id);
+          if (idx !== -1) {
+            merged[idx] = pp;
+          } else {
+            merged.push(pp);
+          }
+        });
+        return merged;
+      });
+
+      // 3. History Logs
+      await pushHistoryToSupabase(currentUser.id, history);
+      const pulledHistory = await pullHistoryFromSupabase(currentUser.id);
+      setHistory(prev => {
+        const merged = [...prev];
+        pulledHistory.forEach(ph => {
+          if (!merged.some(mh => mh.id === ph.id)) {
+            merged.push(ph);
+          }
+        });
+        return merged.sort((a, b) => b.date - a.date);
+      });
+
+      // 4. Focus
+      await pushFocusedExercisesToSupabase(currentUser.id, focusedExercises);
+      const pulledFocus = await pullFocusedExercisesFromSupabase(currentUser.id);
+      setFocusedExercises(prev => {
+        const merged = [...prev];
+        pulledFocus.forEach(pf => {
+          if (!merged.includes(pf)) {
+            merged.push(pf);
+          }
+        });
+        return merged;
+      });
+
+      setLastSyncedTime(Date.now());
+      setSyncStatus("synced");
+    } catch (err) {
+      console.error("Erro geral na sincronização:", err);
+      setSyncStatus("error");
+    }
+  };
+
+  // Trigger sync on load/user login
+  useEffect(() => {
+    if (user && isLoaded) {
+      syncAllData(user);
+    }
+  }, [user, isLoaded]);
+
+  // Auth Handlers
+  const handleAuthAction = async () => {
+    setSyncStatus("syncing");
+    try {
+      if (authMode === "login") {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword
+        });
+        if (error) throw error;
+        setUser(data.user);
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword
+        });
+        if (error) throw error;
+        setUser(data.user);
+        setDialog({
+          title: "Conta Criada!",
+          message: "Sua conta foi criada. Se um e-mail de confirmação foi exigido, confirme-o para liberar o sincronismo."
+        });
+      }
+      setAuthEmail("");
+      setAuthPassword("");
+    } catch (err: any) {
+      console.error(err);
+      setSyncStatus("error");
+      setDialog({
+        title: "Erro de Autenticação",
+        message: err.message || "Falha ao processar autenticação."
+      });
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setSyncStatus("idle");
+      setLastSyncedTime(null);
+      setIsAuthModalOpen(false);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleForceSync = () => {
+    if (user) {
+      syncAllData(user);
+    }
+  };
+
+  // Save states to local storage when changed & sync to Supabase if online
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_exercises_v3", JSON.stringify(exercises));
-  }, [exercises, isLoaded]);
+    if (user) {
+      pushCustomExercisesToSupabase(user.id, exercises);
+    }
+  }, [exercises, isLoaded, user]);
 
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_plans_v3", JSON.stringify(plans));
-  }, [plans, isLoaded]);
+    if (user) {
+      pushPlansToSupabase(user.id, plans);
+    }
+  }, [plans, isLoaded, user]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -270,7 +782,10 @@ export default function AppContainer() {
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_history_v4", JSON.stringify(history));
-  }, [history, isLoaded]);
+    if (user) {
+      pushHistoryToSupabase(user.id, history);
+    }
+  }, [history, isLoaded, user]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -284,7 +799,10 @@ export default function AppContainer() {
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_focused_exercises_v1", JSON.stringify(focusedExercises));
-  }, [focusedExercises, isLoaded]);
+    if (user) {
+      pushFocusedExercisesToSupabase(user.id, focusedExercises);
+    }
+  }, [focusedExercises, isLoaded, user]);
 
   // Reset active workout index when active plan changes
   useEffect(() => {
@@ -374,6 +892,28 @@ export default function AppContainer() {
         endTime: prev.endTime + seconds * 1000
       };
     });
+  };
+
+  const renderSyncButton = () => {
+    return (
+      <button
+        onClick={() => setIsAuthModalOpen(true)}
+        className="p-2 text-concrete hover:text-white transition-colors relative flex items-center justify-center rounded-xl bg-concrete/5 border border-concrete/10 hover:border-vulcanico"
+        title="Configurações de Sincronismo"
+      >
+        {syncStatus === "syncing" ? (
+          <RefreshCw size={16} className="text-vulcanico animate-spin" />
+        ) : user ? (
+          syncStatus === "error" ? (
+            <CloudOff size={16} className="text-red-500" />
+          ) : (
+            <Cloud size={16} className="text-vulcanico" />
+          )
+        ) : (
+          <CloudOff size={16} className="text-concrete" />
+        )}
+      </button>
+    );
   };
 
   // --- ACTIONS: EXERCISE LIBRARY ---
@@ -2059,12 +2599,15 @@ export default function AppContainer() {
           <div className="p-6 flex flex-col min-h-full">
             <div className="flex justify-between items-end mb-8">
               <h1 className="font-display text-4xl uppercase text-white tracking-tighter leading-none">Planos</h1>
-              <button 
-                onClick={handleStartCreatePlan}
-                className="font-mono text-[11px] text-vulcanico uppercase tracking-widest underline hover:text-white"
-              >
-                + Criar Plano
-              </button>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={handleStartCreatePlan}
+                  className="font-mono text-[11px] text-vulcanico uppercase tracking-widest underline hover:text-white"
+                >
+                  + Criar Plano
+                </button>
+                {renderSyncButton()}
+              </div>
             </div>
 
             {/* Active Plan Detail */}
@@ -2237,7 +2780,10 @@ export default function AppContainer() {
         {/* TAB: BIBLIOTECA EXERCICIOS */}
         {activeTab === "exercises" && (
           <div className="p-6 flex flex-col min-h-full">
-            <h1 className="font-display text-4xl uppercase text-white tracking-tighter mb-8 leading-none">Exercícios</h1>
+            <div className="flex justify-between items-end mb-8">
+              <h1 className="font-display text-4xl uppercase text-white tracking-tighter mb-8 leading-none">Exercícios</h1>
+              {renderSyncButton()}
+            </div>
 
             {/* Form */}
             <form onSubmit={handleAddExercise} className="flex flex-col gap-4 mb-10">
@@ -2327,7 +2873,10 @@ export default function AppContainer() {
         {/* TAB: ESTATISTICAS (EX-HISTORICO) */}
         {activeTab === "history" && (
           <div className="p-6 flex flex-col min-h-full">
-            <h1 className="font-display text-[44px] uppercase text-white leading-none tracking-tight mb-4">Estatísticas</h1>
+            <div className="flex justify-between items-end mb-4">
+              <h1 className="font-display text-[44px] uppercase text-white leading-none tracking-tight">Estatísticas</h1>
+              {renderSyncButton()}
+            </div>
 
             {/* Period Filters */}
             <div className="flex gap-2 mb-6 border-b border-concrete/15 pb-4">
@@ -3008,6 +3557,134 @@ export default function AppContainer() {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {/* SYNC CONTROL CENTER / AUTH MODAL */}
+      {isAuthModalOpen && (
+        <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
+          <div className="bg-noturno border border-concrete/30 p-6 max-w-sm w-full flex flex-col gap-5 rounded-2xl relative shadow-2xl">
+            
+            {/* Close Button */}
+            <button 
+              onClick={() => setIsAuthModalOpen(false)}
+              className="absolute top-4 right-4 text-concrete hover:text-white transition-colors"
+            >
+              <X size={18} />
+            </button>
+
+            {/* Title */}
+            <div className="border-b border-concrete/10 pb-3 flex items-center gap-2">
+              <Database size={18} className="text-vulcanico" />
+              <h3 className="font-display text-lg uppercase text-white tracking-wider font-bold">
+                Nuvem & Sincronismo
+              </h3>
+            </div>
+
+            {/* Sync Telemetry Status */}
+            <div className="bg-concrete/5 border border-concrete/10 p-3 rounded-xl flex flex-col gap-1">
+              <div className="flex justify-between items-center">
+                <span className="font-mono text-[9px] text-concrete uppercase">Status de Conectividade:</span>
+                <span className="font-mono text-[10px] uppercase font-bold flex items-center gap-1">
+                  {user ? (
+                    syncStatus === "syncing" ? (
+                      <span className="text-yellow-500 flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> Sincronizando</span>
+                    ) : syncStatus === "error" ? (
+                      <span className="text-red-500 flex items-center gap-1"><CloudOff size={10} /> Falha</span>
+                    ) : (
+                      <span className="text-vulcanico flex items-center gap-1"><Cloud size={10} /> Conectado & Sincronizado</span>
+                    )
+                  ) : (
+                    <span className="text-concrete">Local-Only (Sem Nuvem)</span>
+                  )}
+                </span>
+              </div>
+              {lastSyncedTime && (
+                <div className="flex justify-between items-center border-t border-concrete/5 pt-1.5 mt-1.5">
+                  <span className="font-mono text-[9px] text-concrete uppercase">Último Sincronismo:</span>
+                  <span className="font-mono text-[9px] text-concrete">
+                    {new Date(lastSyncedTime).toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {user ? (
+              // LOGGED IN VIEW
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-mono text-[9px] text-concrete uppercase">Conta Ativa:</span>
+                  <span className="font-mono text-xs text-white truncate uppercase font-bold">{user.email}</span>
+                </div>
+
+                <div className="flex flex-col gap-2 mt-2">
+                  <button
+                    onClick={() => handleForceSync()}
+                    disabled={syncStatus === "syncing"}
+                    className="w-full bg-vulcanico hover:bg-white text-noturno font-display text-[11px] uppercase py-3 font-bold transition-all rounded-xl active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw size={12} className={syncStatus === "syncing" ? "animate-spin" : ""} />
+                    Sincronizar Agora
+                  </button>
+                  <button
+                    onClick={() => handleLogout()}
+                    className="w-full border border-concrete/30 hover:border-red-500 text-concrete hover:text-red-500 font-mono text-[10px] uppercase py-3 transition-colors rounded-xl flex items-center justify-center gap-2"
+                  >
+                    Desconectar Conta
+                  </button>
+                </div>
+              </div>
+            ) : (
+              // LOGGED OUT VIEW (AUTH FORM)
+              <div className="flex flex-col gap-4">
+                <p className="font-mono text-[10px] text-concrete uppercase leading-relaxed">
+                  Crie uma conta para sincronizar seus planos, treinos e estatísticas de forma segura entre seu PC, Celular e outros dispositivos.
+                </p>
+
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="font-mono text-[9px] text-concrete uppercase">E-mail</label>
+                    <input 
+                      type="email"
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      placeholder="ex: voce@email.com"
+                      className="bg-transparent border-b border-concrete/30 py-1.5 font-mono text-xs text-white focus:outline-none focus:border-vulcanico transition-colors uppercase"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="font-mono text-[9px] text-concrete uppercase">Senha</label>
+                    <input 
+                      type="password"
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="bg-transparent border-b border-concrete/30 py-1.5 font-mono text-xs text-white focus:outline-none focus:border-vulcanico transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 mt-2">
+                  <button
+                    onClick={() => handleAuthAction()}
+                    disabled={!authEmail.trim() || authPassword.length < 6 || syncStatus === "syncing"}
+                    className="w-full bg-vulcanico hover:bg-white text-noturno font-display text-[11px] uppercase py-3 font-bold transition-all rounded-xl active:scale-98 disabled:opacity-50"
+                  >
+                    {authMode === "login" ? "Entrar" : "Criar Conta"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}
+                    className="font-mono text-[9px] text-vulcanico uppercase tracking-wider text-center underline hover:text-white mt-1"
+                  >
+                    {authMode === "login" ? "Não possui conta? Cadastre-se" : "Já possui conta? Faça o Login"}
+                  </button>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       )}
