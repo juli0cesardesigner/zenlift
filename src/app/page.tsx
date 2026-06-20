@@ -2219,9 +2219,19 @@ export default function AppContainer() {
         <div className="absolute inset-0 z-50 bg-noturno flex flex-col overflow-hidden animate-fade-in">
           {/* Header */}
           <div className="flex-none p-6 pb-4 border-b border-concrete/20 flex justify-between items-center bg-noturno z-10 shadow-md">
-            <div className="flex flex-col">
-              <span className="font-mono text-[10px] text-concrete uppercase tracking-widest">{editingExercise.muscle}</span>
-              <h2 className="font-display text-3xl uppercase text-white leading-none mt-1">{editingExercise.name}</h2>
+            <div className="flex flex-col flex-1 mr-4">
+              <input
+                type="text"
+                value={editingExercise.muscle}
+                onChange={(e) => setEditingExercise({...editingExercise, muscle: e.target.value})}
+                className="font-mono text-[10px] text-concrete uppercase tracking-widest bg-transparent border-b border-transparent hover:border-concrete/30 focus:border-vulcanico focus:outline-none transition-colors w-1/2 p-0"
+              />
+              <input 
+                type="text" 
+                value={editingExercise.name} 
+                onChange={(e) => setEditingExercise({...editingExercise, name: e.target.value})}
+                className="font-display text-2xl sm:text-3xl uppercase text-white leading-tight mt-1 bg-transparent border-b border-transparent hover:border-concrete/30 focus:border-vulcanico focus:outline-none transition-colors w-full p-0"
+              />
             </div>
             <button 
               onClick={() => {
