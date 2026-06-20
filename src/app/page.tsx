@@ -46,6 +46,7 @@ type ExerciseDef = {
   breathing?: string;
   difficultyLevel?: string;
   exerciseCategory?: string;
+  visibleFields?: string[];
 };
 
 type PlannedSet = {
@@ -154,6 +155,18 @@ const defaultExercises: ExerciseDef[] = [
   { id: "e10", name: "Tríceps Pulley", muscle: "Braços" },
   { id: "e11", name: "Prancha Abdominal", muscle: "Core" }
 ];
+
+const ToggleSwitch = ({ checked, onChange }: { checked: boolean, onChange: (c: boolean) => void }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    onClick={() => onChange(!checked)}
+    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${checked ? 'bg-vulcanico' : 'bg-concrete/30'}`}
+  >
+    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${checked ? 'translate-x-4' : 'translate-x-0'}`} />
+  </button>
+);
 
 export default function AppContainer() {
   const [activeTab, setActiveTab] = useState<Tab>("plans");
@@ -393,7 +406,8 @@ export default function AppContainer() {
         common_mistakes: ex.commonMistakes || null,
         breathing: ex.breathing || null,
         difficulty_level: ex.difficultyLevel || null,
-        exercise_category: ex.exerciseCategory || null
+        exercise_category: ex.exerciseCategory || null,
+        visible_fields: ex.visibleFields || []
       }));
       const { error: upErr } = await supabase.from("exercises").upsert(customToUpsert);
       if (upErr) throw upErr;
@@ -414,7 +428,7 @@ export default function AppContainer() {
     try {
       const { data, error } = await supabase
         .from("exercises")
-        .select("id, name, muscle, video_url, thumbnail_url, secondary_muscles, mechanic_type, equipment, grip_type, stance, instructions, common_mistakes, breathing, difficulty_level, exercise_category")
+        .select("id, name, muscle, video_url, thumbnail_url, secondary_muscles, mechanic_type, equipment, grip_type, stance, instructions, common_mistakes, breathing, difficulty_level, exercise_category, visible_fields")
         .eq("user_id", userId);
 
       if (error) throw error;
@@ -434,7 +448,8 @@ export default function AppContainer() {
         commonMistakes: row.common_mistakes || undefined,
         breathing: row.breathing || undefined,
         difficultyLevel: row.difficulty_level || undefined,
-        exerciseCategory: row.exercise_category || undefined
+        exerciseCategory: row.exercise_category || undefined,
+        visibleFields: row.visible_fields || []
       }));
     } catch (e) {
       console.error("pullCustomExercisesFromSupabase error:", e);
@@ -1375,6 +1390,15 @@ export default function AppContainer() {
     setNewExerciseName("");
   };
 
+  const toggleVisibleField = (field: string, checked: boolean) => {
+    if (!editingExercise) return;
+    const current = editingExercise.visibleFields || [];
+    setEditingExercise({
+      ...editingExercise,
+      visibleFields: checked ? [...current, field] : current.filter(f => f !== field)
+    });
+  };
+
   const handleSaveExerciseDetails = async () => {
     if (!editingExercise) return;
     
@@ -2145,11 +2169,17 @@ export default function AppContainer() {
               
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
-                  <label className="font-mono text-concrete text-[10px] uppercase">Músculos Secundários</label>
+                  <div className="flex justify-between items-center">
+                    <label className="font-mono text-concrete text-[10px] uppercase">Músculos Secundários</label>
+                    <ToggleSwitch checked={editingExercise.visibleFields?.includes('secondaryMuscles') || false} onChange={(c) => toggleVisibleField('secondaryMuscles', c)} />
+                  </div>
                   <input type="text" value={editingExercise.secondaryMuscles?.join(", ") || ""} onChange={(e) => setEditingExercise({...editingExercise, secondaryMuscles: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)})} placeholder="Ex: Tríceps, Ombro" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="font-mono text-concrete text-[10px] uppercase">Mecânica</label>
+                  <div className="flex justify-between items-center">
+                    <label className="font-mono text-concrete text-[10px] uppercase">Mecânica</label>
+                    <ToggleSwitch checked={editingExercise.visibleFields?.includes('mechanicType') || false} onChange={(c) => toggleVisibleField('mechanicType', c)} />
+                  </div>
                   <select value={editingExercise.mechanicType || ""} onChange={(e) => setEditingExercise({...editingExercise, mechanicType: e.target.value})} className="w-full bg-noturno border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors">
                     <option value="">Selecione...</option>
                     <option value="Composto">Composto</option>
@@ -2160,11 +2190,17 @@ export default function AppContainer() {
 
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
-                  <label className="font-mono text-concrete text-[10px] uppercase">Equipamento</label>
+                  <div className="flex justify-between items-center">
+                    <label className="font-mono text-concrete text-[10px] uppercase">Equipamento</label>
+                    <ToggleSwitch checked={editingExercise.visibleFields?.includes('equipment') || false} onChange={(c) => toggleVisibleField('equipment', c)} />
+                  </div>
                   <input type="text" value={editingExercise.equipment || ""} onChange={(e) => setEditingExercise({...editingExercise, equipment: e.target.value})} placeholder="Ex: Halter" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="font-mono text-concrete text-[10px] uppercase">Dificuldade</label>
+                  <div className="flex justify-between items-center">
+                    <label className="font-mono text-concrete text-[10px] uppercase">Dificuldade</label>
+                    <ToggleSwitch checked={editingExercise.visibleFields?.includes('difficultyLevel') || false} onChange={(c) => toggleVisibleField('difficultyLevel', c)} />
+                  </div>
                   <select value={editingExercise.difficultyLevel || ""} onChange={(e) => setEditingExercise({...editingExercise, difficultyLevel: e.target.value})} className="w-full bg-noturno border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors">
                     <option value="">Selecione...</option>
                     <option value="Iniciante">Iniciante</option>
@@ -2176,32 +2212,50 @@ export default function AppContainer() {
 
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
-                  <label className="font-mono text-concrete text-[10px] uppercase">Pegada</label>
+                  <div className="flex justify-between items-center">
+                    <label className="font-mono text-concrete text-[10px] uppercase">Pegada</label>
+                    <ToggleSwitch checked={editingExercise.visibleFields?.includes('gripType') || false} onChange={(c) => toggleVisibleField('gripType', c)} />
+                  </div>
                   <input type="text" value={editingExercise.gripType || ""} onChange={(e) => setEditingExercise({...editingExercise, gripType: e.target.value})} placeholder="Ex: Pronada" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="font-mono text-concrete text-[10px] uppercase">Postura</label>
+                  <div className="flex justify-between items-center">
+                    <label className="font-mono text-concrete text-[10px] uppercase">Postura</label>
+                    <ToggleSwitch checked={editingExercise.visibleFields?.includes('stance') || false} onChange={(c) => toggleVisibleField('stance', c)} />
+                  </div>
                   <input type="text" value={editingExercise.stance || ""} onChange={(e) => setEditingExercise({...editingExercise, stance: e.target.value})} placeholder="Ex: Unilateral" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
                 </div>
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="font-mono text-concrete text-[10px] uppercase">Categoria</label>
+                <div className="flex justify-between items-center">
+                  <label className="font-mono text-concrete text-[10px] uppercase">Categoria</label>
+                  <ToggleSwitch checked={editingExercise.visibleFields?.includes('exerciseCategory') || false} onChange={(c) => toggleVisibleField('exerciseCategory', c)} />
+                </div>
                 <input type="text" value={editingExercise.exerciseCategory || ""} onChange={(e) => setEditingExercise({...editingExercise, exerciseCategory: e.target.value})} placeholder="Ex: Hipertrofia, Cardio" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
               </div>
 
               <div className="flex flex-col gap-1 mt-2">
-                <label className="font-mono text-concrete text-[10px] uppercase">Instruções Passo a Passo</label>
+                <div className="flex justify-between items-center">
+                  <label className="font-mono text-concrete text-[10px] uppercase">Instruções Passo a Passo</label>
+                  <ToggleSwitch checked={editingExercise.visibleFields?.includes('instructions') || false} onChange={(c) => toggleVisibleField('instructions', c)} />
+                </div>
                 <textarea value={editingExercise.instructions || ""} onChange={(e) => setEditingExercise({...editingExercise, instructions: e.target.value})} placeholder="Descreva os passos para a execução correta" className="w-full bg-concrete/5 border border-concrete/20 rounded-lg p-3 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors resize-none h-32" />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="font-mono text-concrete text-[10px] uppercase">Erros Comuns</label>
+                <div className="flex justify-between items-center">
+                  <label className="font-mono text-concrete text-[10px] uppercase">Erros Comuns</label>
+                  <ToggleSwitch checked={editingExercise.visibleFields?.includes('commonMistakes') || false} onChange={(c) => toggleVisibleField('commonMistakes', c)} />
+                </div>
                 <textarea value={editingExercise.commonMistakes || ""} onChange={(e) => setEditingExercise({...editingExercise, commonMistakes: e.target.value})} placeholder="O que não fazer" className="w-full bg-concrete/5 border border-concrete/20 rounded-lg p-3 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors resize-none h-24" />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="font-mono text-concrete text-[10px] uppercase">Respiração</label>
+                <div className="flex justify-between items-center">
+                  <label className="font-mono text-concrete text-[10px] uppercase">Respiração</label>
+                  <ToggleSwitch checked={editingExercise.visibleFields?.includes('breathing') || false} onChange={(c) => toggleVisibleField('breathing', c)} />
+                </div>
                 <input type="text" value={editingExercise.breathing || ""} onChange={(e) => setEditingExercise({...editingExercise, breathing: e.target.value})} placeholder="Ex: Expire na subida" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
               </div>
             </div>
@@ -2352,10 +2406,44 @@ export default function AppContainer() {
                           </div>
                         </div>
 
+                        {/* Visible Exercise Details */}
+                        {exDef && exDef.visibleFields && exDef.visibleFields.length > 0 && !isQueued && (
+                          <div className="flex flex-col gap-2 mt-3 mb-4 p-3 bg-concrete/5 border border-concrete/10 rounded-xl">
+                            {exDef.visibleFields.map(field => {
+                              const labelMap: Record<string, string> = {
+                                secondaryMuscles: "Músculos Secundários",
+                                mechanicType: "Mecânica",
+                                equipment: "Equipamento",
+                                difficultyLevel: "Dificuldade",
+                                gripType: "Pegada",
+                                stance: "Postura",
+                                exerciseCategory: "Categoria",
+                                instructions: "Instruções",
+                                commonMistakes: "Erros Comuns",
+                                breathing: "Respiração"
+                              };
+                              let value: any = exDef[field as keyof ExerciseDef];
+                              if (!value || (Array.isArray(value) && value.length === 0)) return null;
+                              if (Array.isArray(value)) value = value.join(', ');
+                              
+                              const isLongText = ['instructions', 'commonMistakes'].includes(field);
+                              
+                              return (
+                                <div key={field} className={`flex ${isLongText ? 'flex-col gap-1' : 'justify-between items-center border-b border-concrete/5 pb-1 last:border-0 last:pb-0'}`}>
+                                  <span className="font-mono text-[9px] text-concrete uppercase">{labelMap[field] || field}</span>
+                                  <span className={`font-mono ${isLongText ? 'text-xs text-white' : 'text-[10px] text-white font-bold'} text-right whitespace-pre-wrap`}>
+                                    {value}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
                         {/* Sets Header */}
                         <div className="grid grid-cols-12 font-mono text-[10px] text-concrete uppercase mb-2 text-center font-bold">
                           <div className="col-span-2">Série</div>
-                          <div className="col-span-3">Meta (Reps)</div>
+                          <div className="col-span-3">(Reps)</div>
                           <div className="col-span-3">Carga (kg)</div>
                           <div className="col-span-2">Reps</div>
                           <div className="col-span-2">Feito</div>
@@ -2407,7 +2495,6 @@ export default function AppContainer() {
 
                                 <div className="col-span-3 font-mono text-[11px] text-concrete">
                                   <div>{targetText}</div>
-                                  {set.restSeconds > 0 && <div className="text-[9px]">{set.restSeconds}s rec</div>}
                                 </div>
 
                                 <div className="col-span-3 px-1">
