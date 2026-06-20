@@ -460,7 +460,7 @@ export default function AppContainer() {
     }
   };
 
-  const pushPlansToSupabase = async (userId: string, localPlans: Plan[], deletedIds: string[]) => {
+  const pushPlansToSupabase = async (userId: string, localPlans: Plan[], deletedIds: string[]): Promise<boolean> => {
     try {
       // 1. Delete plans that are explicitly marked as deleted
       if (deletedIds.length > 0) {
@@ -474,7 +474,7 @@ export default function AppContainer() {
         localStorage.setItem("is_deleted_plans_v1", JSON.stringify(deletedPlanIdsRef.current));
       }
 
-      if (localPlans.length === 0) return;
+      if (localPlans.length === 0) return true;
 
       // 2. Upsert remaining plans
       const plansToUpsert = localPlans.map(p => ({
@@ -627,8 +627,10 @@ export default function AppContainer() {
       });
       syncedPlanIdsRef.current = next;
       localStorage.setItem("is_synced_plans_v1", JSON.stringify(next));
+      return true;
     } catch (e) {
       console.error("pushPlansToSupabase error:", e);
+      return false;
     }
   };
 
@@ -920,8 +922,9 @@ export default function AppContainer() {
       });
 
       // 2. Plans
-      await pushPlansToSupabase(currentUser.id, plans, deletedPlanIdsRef.current);
-      const pulledPlans = await pullPlansFromSupabase(currentUser.id);
+      const plansPushed = await pushPlansToSupabase(currentUser.id, plans, deletedPlanIdsRef.current);
+      if (plansPushed) {
+        const pulledPlans = await pullPlansFromSupabase(currentUser.id);
       setPlans(prev => {
         const pulledIds = pulledPlans.map(pp => pp.id);
         const filteredPrev = prev.filter(p => {
@@ -946,6 +949,7 @@ export default function AppContainer() {
         localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
         return merged;
       });
+      }
 
       // 3. History Logs
       await pushHistoryToSupabase(currentUser.id, history, deletedHistoryIdsRef.current);
@@ -1204,8 +1208,8 @@ export default function AppContainer() {
     if (!isLoaded) return;
     localStorage.setItem("is_plans_v3", JSON.stringify(plans));
     if (user && !isSyncingFromRemoteRef.current) {
-      pushPlansToSupabase(user.id, plans, deletedPlanIdsRef.current).then(() => {
-        if (broadcastChannelRef.current) {
+      pushPlansToSupabase(user.id, plans, deletedPlanIdsRef.current).then((success) => {
+        if (success && broadcastChannelRef.current) {
           broadcastChannelRef.current.send({
             type: "broadcast",
             event: "data_changed",
