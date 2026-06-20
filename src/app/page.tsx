@@ -2106,7 +2106,7 @@ export default function AppContainer() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8 pb-32">
+          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8 pb-32 max-w-2xl mx-auto w-full">
             
             {/* Secao de Midia */}
             <div className="flex flex-col gap-4">
@@ -2143,7 +2143,7 @@ export default function AppContainer() {
             <div className="flex flex-col gap-4">
               <h3 className="font-mono text-vulcanico text-xs uppercase font-bold tracking-widest border-b border-concrete/10 pb-2">Detalhes Técnicos</h3>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
                   <label className="font-mono text-concrete text-[10px] uppercase">Músculos Secundários</label>
                   <input type="text" value={editingExercise.secondaryMuscles?.join(", ") || ""} onChange={(e) => setEditingExercise({...editingExercise, secondaryMuscles: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)})} placeholder="Ex: Tríceps, Ombro" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
@@ -2158,7 +2158,7 @@ export default function AppContainer() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
                   <label className="font-mono text-concrete text-[10px] uppercase">Equipamento</label>
                   <input type="text" value={editingExercise.equipment || ""} onChange={(e) => setEditingExercise({...editingExercise, equipment: e.target.value})} placeholder="Ex: Halter" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
@@ -2174,7 +2174,7 @@ export default function AppContainer() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
                   <label className="font-mono text-concrete text-[10px] uppercase">Pegada</label>
                   <input type="text" value={editingExercise.gripType || ""} onChange={(e) => setEditingExercise({...editingExercise, gripType: e.target.value})} placeholder="Ex: Pronada" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
