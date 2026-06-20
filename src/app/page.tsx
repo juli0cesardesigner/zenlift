@@ -229,18 +229,41 @@ export default function AppContainer() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
   const [lastSyncedTime, setLastSyncedTime] = useState<number | null>(null);
 
-  // Deletion tracking states
-  const [deletedPlanIds, setDeletedPlanIds] = useState<string[]>([]);
-  const [deletedExerciseIds, setDeletedExerciseIds] = useState<string[]>([]);
-  const [deletedHistoryIds, setDeletedHistoryIds] = useState<string[]>([]);
+  // Deletion tracking refs (useRef to avoid channel teardown on every delete)
+  const deletedPlanIdsRef = useRef<string[]>([]);
+  const deletedExerciseIdsRef = useRef<string[]>([]);
+  const deletedHistoryIdsRef = useRef<string[]>([]);
 
-  // Synced tracking refs (prevent resurrection of deleted items - useRef to avoid re-renders)
+  // Synced tracking refs (prevent resurrection of deleted items)
   const syncedPlanIdsRef = useRef<string[]>([]);
   const syncedExerciseIdsRef = useRef<string[]>([]);
   const syncedHistoryIdsRef = useRef<string[]>([]);
 
   // Flag to suppress push-backs when state changes originate from Realtime events
   const isSyncingFromRemoteRef = useRef(false);
+
+  // Broadcast channel ref (accessible from watchers)
+  const broadcastChannelRef = useRef<any>(null);
+
+  // Helper to update deletedIds refs + persist to localStorage
+  const addDeletedPlanId = (id: string) => {
+    if (!deletedPlanIdsRef.current.includes(id)) {
+      deletedPlanIdsRef.current = [...deletedPlanIdsRef.current, id];
+      localStorage.setItem("is_deleted_plans_v1", JSON.stringify(deletedPlanIdsRef.current));
+    }
+  };
+  const addDeletedExerciseId = (id: string) => {
+    if (!deletedExerciseIdsRef.current.includes(id)) {
+      deletedExerciseIdsRef.current = [...deletedExerciseIdsRef.current, id];
+      localStorage.setItem("is_deleted_exercises_v1", JSON.stringify(deletedExerciseIdsRef.current));
+    }
+  };
+  const addDeletedHistoryId = (id: string) => {
+    if (!deletedHistoryIdsRef.current.includes(id)) {
+      deletedHistoryIdsRef.current = [...deletedHistoryIdsRef.current, id];
+      localStorage.setItem("is_deleted_history_v1", JSON.stringify(deletedHistoryIdsRef.current));
+    }
+  };
 
   // Load state from local storage on mount
   useEffect(() => {
@@ -274,13 +297,13 @@ export default function AppContainer() {
     if (storedFocused) setFocusedExercises(JSON.parse(storedFocused));
 
     const storedDeletedPlans = localStorage.getItem("is_deleted_plans_v1");
-    if (storedDeletedPlans) setDeletedPlanIds(JSON.parse(storedDeletedPlans));
+    if (storedDeletedPlans) deletedPlanIdsRef.current = JSON.parse(storedDeletedPlans);
 
     const storedDeletedExercises = localStorage.getItem("is_deleted_exercises_v1");
-    if (storedDeletedExercises) setDeletedExerciseIds(JSON.parse(storedDeletedExercises));
+    if (storedDeletedExercises) deletedExerciseIdsRef.current = JSON.parse(storedDeletedExercises);
 
     const storedDeletedHistory = localStorage.getItem("is_deleted_history_v1");
-    if (storedDeletedHistory) setDeletedHistoryIds(JSON.parse(storedDeletedHistory));
+    if (storedDeletedHistory) deletedHistoryIdsRef.current = JSON.parse(storedDeletedHistory);
 
     const storedSyncedPlans = localStorage.getItem("is_synced_plans_v1");
     if (storedSyncedPlans) syncedPlanIdsRef.current = JSON.parse(storedSyncedPlans);
@@ -318,7 +341,8 @@ export default function AppContainer() {
           .eq("user_id", userId)
           .in("id", deletedIds);
         if (delErr) throw delErr;
-        setDeletedExerciseIds(prev => prev.filter(id => !deletedIds.includes(id)));
+        deletedExerciseIdsRef.current = deletedExerciseIdsRef.current.filter(id => !deletedIds.includes(id));
+        localStorage.setItem("is_deleted_exercises_v1", JSON.stringify(deletedExerciseIdsRef.current));
       }
 
       // 2. Upsert remaining custom exercises
@@ -376,7 +400,8 @@ export default function AppContainer() {
           .eq("user_id", userId)
           .in("id", deletedIds);
         if (delErr) throw delErr;
-        setDeletedPlanIds(prev => prev.filter(id => !deletedIds.includes(id)));
+        deletedPlanIdsRef.current = deletedPlanIdsRef.current.filter(id => !deletedIds.includes(id));
+        localStorage.setItem("is_deleted_plans_v1", JSON.stringify(deletedPlanIdsRef.current));
       }
 
       if (localPlans.length === 0) return;
@@ -610,7 +635,8 @@ export default function AppContainer() {
           .eq("user_id", userId)
           .in("id", deletedIds);
         if (delErr) throw delErr;
-        setDeletedHistoryIds(prev => prev.filter(id => !deletedIds.includes(id)));
+        deletedHistoryIdsRef.current = deletedHistoryIdsRef.current.filter(id => !deletedIds.includes(id));
+        localStorage.setItem("is_deleted_history_v1", JSON.stringify(deletedHistoryIdsRef.current));
       }
 
       if (localHistory.length === 0) return;
@@ -792,7 +818,7 @@ export default function AppContainer() {
     setSyncStatus("syncing");
     try {
       // 1. Exercises
-      await pushCustomExercisesToSupabase(currentUser.id, exercises, deletedExerciseIds);
+      await pushCustomExercisesToSupabase(currentUser.id, exercises, deletedExerciseIdsRef.current);
       const pulledCustom = await pullCustomExercisesFromSupabase(currentUser.id);
       setExercises(prev => {
         const pulledIds = pulledCustom.map(pe => pe.id);
@@ -806,7 +832,7 @@ export default function AppContainer() {
 
         const merged = [...filteredPrev];
         pulledCustom.forEach(pe => {
-          if (!merged.some(me => me.id === pe.id) && !deletedExerciseIds.includes(pe.id)) {
+          if (!merged.some(me => me.id === pe.id) && !deletedExerciseIdsRef.current.includes(pe.id)) {
             merged.push(pe);
           }
         });
@@ -818,7 +844,7 @@ export default function AppContainer() {
       });
 
       // 2. Plans
-      await pushPlansToSupabase(currentUser.id, plans, deletedPlanIds);
+      await pushPlansToSupabase(currentUser.id, plans, deletedPlanIdsRef.current);
       const pulledPlans = await pullPlansFromSupabase(currentUser.id);
       setPlans(prev => {
         const pulledIds = pulledPlans.map(pp => pp.id);
@@ -834,7 +860,7 @@ export default function AppContainer() {
           const idx = merged.findIndex(mp => mp.id === pp.id);
           if (idx !== -1) {
             merged[idx] = pp;
-          } else if (!deletedPlanIds.includes(pp.id)) {
+          } else if (!deletedPlanIdsRef.current.includes(pp.id)) {
             merged.push(pp);
           }
         });
@@ -846,7 +872,7 @@ export default function AppContainer() {
       });
 
       // 3. History Logs
-      await pushHistoryToSupabase(currentUser.id, history, deletedHistoryIds);
+      await pushHistoryToSupabase(currentUser.id, history, deletedHistoryIdsRef.current);
       const pulledHistory = await pullHistoryFromSupabase(currentUser.id);
       setHistory(prev => {
         const pulledIds = pulledHistory.map(ph => ph.id);
@@ -859,7 +885,7 @@ export default function AppContainer() {
 
         const merged = [...filteredPrev];
         pulledHistory.forEach(ph => {
-          if (!merged.some(mh => mh.id === ph.id) && !deletedHistoryIds.includes(ph.id)) {
+          if (!merged.some(mh => mh.id === ph.id) && !deletedHistoryIdsRef.current.includes(ph.id)) {
             merged.push(ph);
           }
         });
@@ -898,257 +924,139 @@ export default function AppContainer() {
     }
   }, [user, isLoaded]);
 
-  // Supabase Realtime Listener
+  // Supabase Broadcast Listener for Realtime Sync
   useEffect(() => {
     if (!user || !isLoaded) return;
 
-    const channel = supabase
-      .channel("zenlift-realtime-changes")
-      // Listen to plans changes
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "plans" },
-        async (payload: any) => {
-          console.log("Realtime plan change:", payload);
-          isSyncingFromRemoteRef.current = true;
-          const pulledPlans = await pullPlansFromSupabase(user.id);
-          setPlans(prev => {
-            const pulledIds = pulledPlans.map(pp => pp.id);
-            const filteredPrev = prev.filter(p => {
-              const wasSynced = syncedPlanIdsRef.current.includes(p.id);
-              const isPulled = pulledIds.includes(p.id);
-              if (wasSynced && !isPulled) return false;
-              return true;
+    // We create a channel specific to this user.
+    // 'broadcast: { self: false }' ensures we don't receive our own messages,
+    // avoiding feedback loops entirely.
+    const channel = supabase.channel(`sync-${user.id}`, {
+      config: {
+        broadcast: { self: false },
+      },
+    });
+
+    // Save the channel to ref so push functions can broadcast
+    broadcastChannelRef.current = channel;
+
+    channel
+      .on("broadcast", { event: "data_changed" }, async (payload) => {
+        console.log("Broadcast received:", payload);
+        const { table } = payload.payload;
+
+        // Block outgoing pushes briefly while we pull
+        isSyncingFromRemoteRef.current = true;
+
+        try {
+          if (table === "plans" || table === "workouts" || table === "planned_exercises" || table === "planned_sets") {
+            const pulledPlans = await pullPlansFromSupabase(user.id);
+            setPlans((prev) => {
+              const pulledIds = pulledPlans.map((pp) => pp.id);
+              const filteredPrev = prev.filter((p) => {
+                const wasSynced = syncedPlanIdsRef.current.includes(p.id);
+                const isPulled = pulledIds.includes(p.id);
+                if (wasSynced && !isPulled) return false;
+                return true;
+              });
+
+              const merged = [...filteredPrev];
+              pulledPlans.forEach((pp) => {
+                const idx = merged.findIndex((mp) => mp.id === pp.id);
+                if (idx !== -1) {
+                  merged[idx] = pp;
+                } else if (!deletedPlanIdsRef.current.includes(pp.id)) {
+                  merged.push(pp);
+                }
+              });
+
+              const newSyncedIds = merged.filter((p) => pulledIds.includes(p.id)).map((p) => p.id);
+              syncedPlanIdsRef.current = newSyncedIds;
+              localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
+              return merged;
             });
+          }
 
-            const merged = [...filteredPrev];
-            pulledPlans.forEach(pp => {
-              const idx = merged.findIndex(mp => mp.id === pp.id);
-              if (idx !== -1) {
-                merged[idx] = pp;
-              } else if (!deletedPlanIds.includes(pp.id)) {
-                merged.push(pp);
-              }
+          if (table === "exercises") {
+            const pulledCustom = await pullCustomExercisesFromSupabase(user.id);
+            setExercises((prev) => {
+              const pulledIds = pulledCustom.map((pe) => pe.id);
+              const filteredPrev = prev.filter((ex) => {
+                if (!ex.id.startsWith("ex_")) return true;
+                const wasSynced = syncedExerciseIdsRef.current.includes(ex.id);
+                const isPulled = pulledIds.includes(ex.id);
+                if (wasSynced && !isPulled) return false;
+                return true;
+              });
+
+              const merged = [...filteredPrev];
+              pulledCustom.forEach((pe) => {
+                if (!merged.some((me) => me.id === pe.id) && !deletedExerciseIdsRef.current.includes(pe.id)) {
+                  merged.push(pe);
+                }
+              });
+
+              const newSyncedIds = merged.filter((ex) => ex.id.startsWith("ex_") && pulledIds.includes(ex.id)).map((ex) => ex.id);
+              syncedExerciseIdsRef.current = newSyncedIds;
+              localStorage.setItem("is_synced_exercises_v1", JSON.stringify(newSyncedIds));
+              return merged;
             });
+          }
 
-            let finalPlans = merged;
-            if (payload.eventType === "DELETE") {
-              const deletedId = payload.old.id;
-              finalPlans = merged.filter(mp => mp.id !== deletedId);
-            }
+          if (table === "history_logs") {
+            const pulledHistory = await pullHistoryFromSupabase(user.id);
+            setHistory((prev) => {
+              const pulledIds = pulledHistory.map((ph) => ph.id);
+              const filteredPrev = prev.filter((log) => {
+                const wasSynced = syncedHistoryIdsRef.current.includes(log.id);
+                const isPulled = pulledIds.includes(log.id);
+                if (wasSynced && !isPulled) return false;
+                return true;
+              });
 
-            const newSyncedIds = finalPlans.filter(p => pulledIds.includes(p.id)).map(p => p.id);
-            syncedPlanIdsRef.current = newSyncedIds;
-            localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
-            return finalPlans;
-          });
-          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
+              const merged = [...filteredPrev];
+              pulledHistory.forEach((ph) => {
+                if (!merged.some((mh) => mh.id === ph.id) && !deletedHistoryIdsRef.current.includes(ph.id)) {
+                  merged.push(ph);
+                }
+              });
+
+              const newSyncedIds = merged.filter((log) => pulledIds.includes(log.id)).map((log) => log.id);
+              syncedHistoryIdsRef.current = newSyncedIds;
+              localStorage.setItem("is_synced_history_v1", JSON.stringify(newSyncedIds));
+              return merged.sort((a, b) => b.date - a.date);
+            });
+          }
+
+          if (table === "focused_exercises") {
+            const pulledFocus = await pullFocusedExercisesFromSupabase(user.id);
+            setFocusedExercises((prev) => {
+              const merged = [...prev];
+              pulledFocus.forEach((pf) => {
+                if (!merged.includes(pf)) {
+                  merged.push(pf);
+                }
+              });
+              return merged;
+            });
+          }
+        } finally {
+          setTimeout(() => {
+            isSyncingFromRemoteRef.current = false;
+          }, 500);
         }
-      )
-      // Listen to workouts changes
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "workouts" },
-        async () => {
-          isSyncingFromRemoteRef.current = true;
-          const pulledPlans = await pullPlansFromSupabase(user.id);
-          setPlans(prev => {
-            const pulledIds = pulledPlans.map(pp => pp.id);
-            const filteredPrev = prev.filter(p => {
-              const wasSynced = syncedPlanIdsRef.current.includes(p.id);
-              const isPulled = pulledIds.includes(p.id);
-              if (wasSynced && !isPulled) return false;
-              return true;
-            });
-
-            const merged = [...filteredPrev];
-            pulledPlans.forEach(pp => {
-              const idx = merged.findIndex(mp => mp.id === pp.id);
-              if (idx !== -1) {
-                merged[idx] = pp;
-              } else if (!deletedPlanIds.includes(pp.id)) {
-                merged.push(pp);
-              }
-            });
-
-            const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
-            syncedPlanIdsRef.current = newSyncedIds;
-            localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
-            return merged;
-          });
-          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
-        }
-      )
-      // Listen to planned_exercises changes
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "planned_exercises" },
-        async () => {
-          isSyncingFromRemoteRef.current = true;
-          const pulledPlans = await pullPlansFromSupabase(user.id);
-          setPlans(prev => {
-            const pulledIds = pulledPlans.map(pp => pp.id);
-            const filteredPrev = prev.filter(p => {
-              const wasSynced = syncedPlanIdsRef.current.includes(p.id);
-              const isPulled = pulledIds.includes(p.id);
-              if (wasSynced && !isPulled) return false;
-              return true;
-            });
-
-            const merged = [...filteredPrev];
-            pulledPlans.forEach(pp => {
-              const idx = merged.findIndex(mp => mp.id === pp.id);
-              if (idx !== -1) {
-                merged[idx] = pp;
-              } else if (!deletedPlanIds.includes(pp.id)) {
-                merged.push(pp);
-              }
-            });
-
-            const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
-            syncedPlanIdsRef.current = newSyncedIds;
-            localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
-            return merged;
-          });
-          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
-        }
-      )
-      // Listen to planned_sets changes
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "planned_sets" },
-        async () => {
-          isSyncingFromRemoteRef.current = true;
-          const pulledPlans = await pullPlansFromSupabase(user.id);
-          setPlans(prev => {
-            const pulledIds = pulledPlans.map(pp => pp.id);
-            const filteredPrev = prev.filter(p => {
-              const wasSynced = syncedPlanIdsRef.current.includes(p.id);
-              const isPulled = pulledIds.includes(p.id);
-              if (wasSynced && !isPulled) return false;
-              return true;
-            });
-
-            const merged = [...filteredPrev];
-            pulledPlans.forEach(pp => {
-              const idx = merged.findIndex(mp => mp.id === pp.id);
-              if (idx !== -1) {
-                merged[idx] = pp;
-              } else if (!deletedPlanIds.includes(pp.id)) {
-                merged.push(pp);
-              }
-            });
-
-            const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
-            syncedPlanIdsRef.current = newSyncedIds;
-            localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
-            return merged;
-          });
-          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
-        }
-      )
-      // Listen to custom exercises changes
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "exercises" },
-        async (payload: any) => {
-          console.log("Realtime exercise change:", payload);
-          isSyncingFromRemoteRef.current = true;
-          const pulledCustom = await pullCustomExercisesFromSupabase(user.id);
-          setExercises(prev => {
-            const pulledIds = pulledCustom.map(pe => pe.id);
-            const filteredPrev = prev.filter(ex => {
-              if (!ex.id.startsWith("ex_")) return true;
-              const wasSynced = syncedExerciseIdsRef.current.includes(ex.id);
-              const isPulled = pulledIds.includes(ex.id);
-              if (wasSynced && !isPulled) return false;
-              return true;
-            });
-
-            const merged = [...filteredPrev];
-            pulledCustom.forEach(pe => {
-              if (!merged.some(me => me.id === pe.id) && !deletedExerciseIds.includes(pe.id)) {
-                merged.push(pe);
-              }
-            });
-
-            let finalExercises = merged;
-            if (payload.eventType === "DELETE") {
-              const deletedId = payload.old.id;
-              finalExercises = merged.filter(me => me.id !== deletedId);
-            }
-
-            const newSyncedIds = finalExercises.filter(ex => ex.id.startsWith("ex_") && pulledIds.includes(ex.id)).map(ex => ex.id);
-            syncedExerciseIdsRef.current = newSyncedIds;
-            localStorage.setItem("is_synced_exercises_v1", JSON.stringify(newSyncedIds));
-            return finalExercises;
-          });
-          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
-        }
-      )
-      // Listen to history changes
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "history_logs" },
-        async (payload: any) => {
-          console.log("Realtime history change:", payload);
-          isSyncingFromRemoteRef.current = true;
-          const pulledHistory = await pullHistoryFromSupabase(user.id);
-          setHistory(prev => {
-            const pulledIds = pulledHistory.map(ph => ph.id);
-            const filteredPrev = prev.filter(log => {
-              const wasSynced = syncedHistoryIdsRef.current.includes(log.id);
-              const isPulled = pulledIds.includes(log.id);
-              if (wasSynced && !isPulled) return false;
-              return true;
-            });
-
-            const merged = [...filteredPrev];
-            pulledHistory.forEach(ph => {
-              if (!merged.some(mh => mh.id === ph.id) && !deletedHistoryIds.includes(ph.id)) {
-                merged.push(ph);
-              }
-            });
-
-            let finalHistory = merged;
-            if (payload.eventType === "DELETE") {
-              const deletedId = payload.old.id;
-              finalHistory = merged.filter(mh => mh.id !== deletedId);
-            }
-
-            const newSyncedIds = finalHistory.filter(log => pulledIds.includes(log.id)).map(log => log.id);
-            syncedHistoryIdsRef.current = newSyncedIds;
-            localStorage.setItem("is_synced_history_v1", JSON.stringify(newSyncedIds));
-            return finalHistory.sort((a, b) => b.date - a.date);
-          });
-          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
-        }
-      )
-      // Listen to focused exercises changes
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "focused_exercises" },
-        async () => {
-          isSyncingFromRemoteRef.current = true;
-          const pulledFocus = await pullFocusedExercisesFromSupabase(user.id);
-          setFocusedExercises(prev => {
-            const merged = [...prev];
-            pulledFocus.forEach(pf => {
-              if (!merged.includes(pf)) {
-                merged.push(pf);
-              }
-            });
-            return merged;
-          });
-          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
-        }
-      )
-      .subscribe();
+      })
+      .subscribe((status) => {
+         if (status === 'SUBSCRIBED') {
+           console.log('Successfully subscribed to broadcast channel:', `sync-${user.id}`);
+         }
+      });
 
     return () => {
       supabase.removeChannel(channel);
+      broadcastChannelRef.current = null;
     };
-  }, [user, isLoaded, deletedPlanIds, deletedExerciseIds, deletedHistoryIds]);
+  }, [user, isLoaded]);
 
   // Auth Handlers
   const handleAuthAction = async () => {
@@ -1203,37 +1111,37 @@ export default function AppContainer() {
     }
   };
 
-  // Save states to local storage when changed & sync to Supabase if online
-  useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem("is_deleted_plans_v1", JSON.stringify(deletedPlanIds));
-  }, [deletedPlanIds, isLoaded]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem("is_deleted_exercises_v1", JSON.stringify(deletedExerciseIds));
-  }, [deletedExerciseIds, isLoaded]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem("is_deleted_history_v1", JSON.stringify(deletedHistoryIds));
-  }, [deletedHistoryIds, isLoaded]);
-
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_exercises_v3", JSON.stringify(exercises));
     if (user && !isSyncingFromRemoteRef.current) {
-      pushCustomExercisesToSupabase(user.id, exercises, deletedExerciseIds);
+      pushCustomExercisesToSupabase(user.id, exercises, deletedExerciseIdsRef.current).then(() => {
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.send({
+            type: "broadcast",
+            event: "data_changed",
+            payload: { table: "exercises" },
+          });
+        }
+      });
     }
-  }, [exercises, isLoaded, user, deletedExerciseIds]);
+  }, [exercises, isLoaded, user]);
 
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_plans_v3", JSON.stringify(plans));
     if (user && !isSyncingFromRemoteRef.current) {
-      pushPlansToSupabase(user.id, plans, deletedPlanIds);
+      pushPlansToSupabase(user.id, plans, deletedPlanIdsRef.current).then(() => {
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.send({
+            type: "broadcast",
+            event: "data_changed",
+            payload: { table: "plans" },
+          });
+        }
+      });
     }
-  }, [plans, isLoaded, user, deletedPlanIds]);
+  }, [plans, isLoaded, user]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -1248,9 +1156,17 @@ export default function AppContainer() {
     if (!isLoaded) return;
     localStorage.setItem("is_history_v4", JSON.stringify(history));
     if (user && !isSyncingFromRemoteRef.current) {
-      pushHistoryToSupabase(user.id, history, deletedHistoryIds);
+      pushHistoryToSupabase(user.id, history, deletedHistoryIdsRef.current).then(() => {
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.send({
+            type: "broadcast",
+            event: "data_changed",
+            payload: { table: "history_logs" },
+          });
+        }
+      });
     }
-  }, [history, isLoaded, user, deletedHistoryIds]);
+  }, [history, isLoaded, user]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -1264,8 +1180,16 @@ export default function AppContainer() {
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_focused_exercises_v1", JSON.stringify(focusedExercises));
-    if (user) {
-      pushFocusedExercisesToSupabase(user.id, focusedExercises);
+    if (user && !isSyncingFromRemoteRef.current) {
+      pushFocusedExercisesToSupabase(user.id, focusedExercises).then(() => {
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.send({
+            type: "broadcast",
+            event: "data_changed",
+            payload: { table: "focused_exercises" },
+          });
+        }
+      });
     }
   }, [focusedExercises, isLoaded, user]);
 
@@ -1404,10 +1328,7 @@ export default function AppContainer() {
       onConfirm: () => {
         setExercises(prev => prev.filter(ex => ex.id !== id));
         if (id.startsWith("ex_")) {
-          setDeletedExerciseIds(prev => {
-            if (prev.includes(id)) return prev;
-            return [...prev, id];
-          });
+          addDeletedExerciseId(id);
         }
       }
     });
@@ -1466,10 +1387,7 @@ export default function AppContainer() {
       confirmText: "Excluir",
       onConfirm: () => {
         setPlans(prev => prev.filter(p => p.id !== planId));
-        setDeletedPlanIds(prev => {
-          if (prev.includes(planId)) return prev;
-          return [...prev, planId];
-        });
+        addDeletedPlanId(planId);
         if (activePlanId === planId) {
           setActivePlanId(null);
         }
