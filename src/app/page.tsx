@@ -436,7 +436,7 @@ export default function AppContainer() {
             .from("workouts")
             .delete()
             .in("plan_id", localPlanIds)
-            .not("id", "in", `(${allLocalWkIds.join(",")})`);
+            .not("id", "in", allLocalWkIds);
           if (wDelErr) throw wDelErr;
         } else {
           const { error: wDelErr } = await supabase
@@ -476,7 +476,7 @@ export default function AppContainer() {
             .from("planned_exercises")
             .delete()
             .in("workout_id", allLocalWkIdsRef)
-            .not("id", "in", `(${allLocalPeIds.join(",")})`);
+            .not("id", "in", allLocalPeIds);
           if (peDelErr) throw peDelErr;
         } else {
           const { error: peDelErr } = await supabase
@@ -518,7 +518,7 @@ export default function AppContainer() {
             .from("planned_sets")
             .delete()
             .in("planned_exercise_id", allLocalPeIdsRef)
-            .not("id", "in", `(${allLocalPsIds.join(",")})`);
+            .not("id", "in", allLocalPsIds);
           if (psDelErr) throw psDelErr;
         } else {
           const { error: psDelErr } = await supabase
