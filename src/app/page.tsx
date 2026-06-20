@@ -16,7 +16,6 @@ import {
   Save, 
   X, 
   ChevronRight, 
-  Sparkles, 
   Check,
   Edit3,
   ChevronDown,
