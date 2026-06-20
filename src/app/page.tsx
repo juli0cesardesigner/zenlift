@@ -280,6 +280,23 @@ export default function AppContainer() {
   const pushCustomExercisesToSupabase = async (userId: string, localExercises: ExerciseDef[]) => {
     try {
       const customLocal = localExercises.filter(ex => ex.id.startsWith("ex_"));
+      const localCustomIds = customLocal.map(ex => ex.id);
+
+      if (localCustomIds.length > 0) {
+        const { error: delErr } = await supabase
+          .from("exercises")
+          .delete()
+          .eq("user_id", userId)
+          .not("id", "in", `(${localCustomIds.join(",")})`);
+        if (delErr) throw delErr;
+      } else {
+        const { error: delErr } = await supabase
+          .from("exercises")
+          .delete()
+          .eq("user_id", userId);
+        if (delErr) throw delErr;
+      }
+
       if (customLocal.length === 0) return;
 
       const toUpsert = customLocal.map(ex => ({
@@ -288,7 +305,8 @@ export default function AppContainer() {
         muscle: ex.muscle,
         user_id: userId
       }));
-      await supabase.from("exercises").upsert(toUpsert);
+      const { error: upErr } = await supabase.from("exercises").upsert(toUpsert);
+      if (upErr) throw upErr;
     } catch (e) {
       console.error("pushCustomExercisesToSupabase error:", e);
     }
@@ -316,9 +334,27 @@ export default function AppContainer() {
 
   const pushPlansToSupabase = async (userId: string, localPlans: Plan[]) => {
     try {
+      const localPlanIds = localPlans.map(p => p.id);
+
+      // 1. Delete plans that are not in localPlanIds
+      if (localPlanIds.length > 0) {
+        const { error: delErr } = await supabase
+          .from("plans")
+          .delete()
+          .eq("user_id", userId)
+          .not("id", "in", `(${localPlanIds.join(",")})`);
+        if (delErr) throw delErr;
+      } else {
+        const { error: delErr } = await supabase
+          .from("plans")
+          .delete()
+          .eq("user_id", userId);
+        if (delErr) throw delErr;
+      }
+
       if (localPlans.length === 0) return;
 
-      // 1. Upsert plans
+      // 2. Upsert remaining plans
       const plansToUpsert = localPlans.map(p => ({
         id: p.id,
         name: p.name,
@@ -327,7 +363,24 @@ export default function AppContainer() {
       const { error: pErr } = await supabase.from("plans").upsert(plansToUpsert);
       if (pErr) throw pErr;
 
-      // 2. Upsert workouts
+      // 3. Delete workouts not in localWorkoutIds for these plans
+      const localWorkoutIds = localPlans.flatMap(p => p.workouts.map(w => w.id));
+      if (localWorkoutIds.length > 0) {
+        const { error: wDelErr } = await supabase
+          .from("workouts")
+          .delete()
+          .in("plan_id", localPlanIds)
+          .not("id", "in", `(${localWorkoutIds.join(",")})`);
+        if (wDelErr) throw wDelErr;
+      } else {
+        const { error: wDelErr } = await supabase
+          .from("workouts")
+          .delete()
+          .in("plan_id", localPlanIds);
+        if (wDelErr) throw wDelErr;
+      }
+
+      // 4. Upsert remaining workouts
       const workoutsToUpsert: any[] = [];
       localPlans.forEach(p => {
         p.workouts.forEach((w, wIdx) => {
@@ -344,7 +397,24 @@ export default function AppContainer() {
         if (wErr) throw wErr;
       }
 
-      // 3. Upsert planned exercises
+      // 5. Delete planned exercises not in localPlannedExerciseIds for these workouts
+      const localPlannedExerciseIds = localPlans.flatMap(p => p.workouts.flatMap(w => w.exercises.map(pe => pe.id)));
+      if (localPlannedExerciseIds.length > 0) {
+        const { error: peDelErr } = await supabase
+          .from("planned_exercises")
+          .delete()
+          .in("workout_id", localWorkoutIds)
+          .not("id", "in", `(${localPlannedExerciseIds.join(",")})`);
+        if (peDelErr) throw peDelErr;
+      } else {
+        const { error: peDelErr } = await supabase
+          .from("planned_exercises")
+          .delete()
+          .in("workout_id", localWorkoutIds);
+        if (peDelErr) throw peDelErr;
+      }
+
+      // 6. Upsert remaining planned exercises
       const peToUpsert: any[] = [];
       localPlans.forEach(p => {
         p.workouts.forEach(w => {
@@ -363,7 +433,24 @@ export default function AppContainer() {
         if (peErr) throw peErr;
       }
 
-      // 4. Upsert planned sets
+      // 7. Delete planned sets not in localPlannedSetIds for these planned exercises
+      const localPlannedSetIds = localPlans.flatMap(p => p.workouts.flatMap(w => w.exercises.flatMap(pe => pe.sets.map(s => s.id))));
+      if (localPlannedSetIds.length > 0) {
+        const { error: psDelErr } = await supabase
+          .from("planned_sets")
+          .delete()
+          .in("planned_exercise_id", localPlannedExerciseIds)
+          .not("id", "in", `(${localPlannedSetIds.join(",")})`);
+        if (psDelErr) throw psDelErr;
+      } else {
+        const { error: psDelErr } = await supabase
+          .from("planned_sets")
+          .delete()
+          .in("planned_exercise_id", localPlannedExerciseIds);
+        if (psDelErr) throw psDelErr;
+      }
+
+      // 8. Upsert remaining planned sets
       const psToUpsert: any[] = [];
       localPlans.forEach(p => {
         p.workouts.forEach(w => {
@@ -469,9 +556,27 @@ export default function AppContainer() {
 
   const pushHistoryToSupabase = async (userId: string, localHistory: HistoryLog[]) => {
     try {
+      const localLogIds = localHistory.map(log => log.id);
+
+      // 1. Delete history logs not in localLogIds
+      if (localLogIds.length > 0) {
+        const { error: delErr } = await supabase
+          .from("history_logs")
+          .delete()
+          .eq("user_id", userId)
+          .not("id", "in", `(${localLogIds.join(",")})`);
+        if (delErr) throw delErr;
+      } else {
+        const { error: delErr } = await supabase
+          .from("history_logs")
+          .delete()
+          .eq("user_id", userId);
+        if (delErr) throw delErr;
+      }
+
       if (localHistory.length === 0) return;
 
-      // 1. Upsert history logs
+      // 2. Upsert remaining history logs
       const logsToUpsert = localHistory.map(log => ({
         id: log.id,
         user_id: userId,
@@ -483,7 +588,7 @@ export default function AppContainer() {
       const { error: lErr } = await supabase.from("history_logs").upsert(logsToUpsert);
       if (lErr) throw lErr;
 
-      // 2. Upsert log exercises
+      // 3. Upsert log exercises
       const exercisesToUpsert: any[] = [];
       localHistory.forEach(log => {
         log.exercises.forEach((ex, exIdx) => {
@@ -502,7 +607,7 @@ export default function AppContainer() {
         if (exErr) throw exErr;
       }
 
-      // 3. Upsert log sets
+      // 4. Upsert log sets
       const setsToUpsert: any[] = [];
       localHistory.forEach(log => {
         log.exercises.forEach((ex, exIdx) => {
@@ -600,12 +705,21 @@ export default function AppContainer() {
 
   const pushFocusedExercisesToSupabase = async (userId: string, localFocus: string[]) => {
     try {
+      // Delete all user's focused exercises first, then insert remaining
+      const { error: delErr } = await supabase
+        .from("focused_exercises")
+        .delete()
+        .eq("user_id", userId);
+      if (delErr) throw delErr;
+
       if (localFocus.length === 0) return;
+
       const focusToUpsert = localFocus.map(name => ({
         user_id: userId,
         exercise_name: name
       }));
-      await supabase.from("focused_exercises").upsert(focusToUpsert);
+      const { error: upErr } = await supabase.from("focused_exercises").upsert(focusToUpsert);
+      if (upErr) throw upErr;
     } catch (e) {
       console.error("pushFocusedExercisesToSupabase error:", e);
     }
