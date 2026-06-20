@@ -1325,7 +1325,7 @@ export default function AppContainer() {
     if (!newExerciseName.trim()) return;
 
     const newEx: ExerciseDef = {
-      id: `ex_${Date.now()}`,
+      id: `ex_${crypto.randomUUID()}`,
       name: newExerciseName.trim(),
       muscle: newExerciseMuscle
     };
@@ -1351,7 +1351,7 @@ export default function AppContainer() {
   // --- ACTIONS: PLAN BUILDER ---
   const handleStartCreatePlan = () => {
     setEditingPlan({
-      id: `plan_${Date.now()}`,
+      id: `plan_${crypto.randomUUID()}`,
       name: "",
       workouts: []
     });
@@ -1412,7 +1412,7 @@ export default function AppContainer() {
   const handleAddWorkoutToBuilder = () => {
     if (!editingPlan) return;
     const newWorkout: WorkoutTemplate = {
-      id: `wk_${Date.now()}`,
+      id: `wk_${crypto.randomUUID()}`,
       name: `Treino ${String.fromCharCode(65 + editingPlan.workouts.length)}`,
       exercises: []
     };
@@ -1448,10 +1448,10 @@ export default function AppContainer() {
     if (!editingPlan || !addingExerciseToWorkoutId) return;
 
     const plannedEx: PlannedExercise = {
-      id: `pe_${Date.now()}`,
+      id: `pe_${crypto.randomUUID()}`,
       exerciseId: exerciseDef.id,
       sets: [
-        { id: `ps_${Date.now()}_1`, minReps: 8, maxReps: 12, isDropSet: false, isToFailure: false, restSeconds: 60 }
+        { id: `ps_${crypto.randomUUID()}`, minReps: 8, maxReps: 12, isDropSet: false, isToFailure: false, restSeconds: 60 }
       ]
     };
 
@@ -1512,7 +1512,7 @@ export default function AppContainer() {
     const firstSet = sets[0];
 
     const newSet: PlannedSet = {
-      id: `ps_${Date.now()}_${sets.length + 1}`,
+      id: `ps_${crypto.randomUUID()}`,
       minReps: firstSet ? firstSet.minReps : 8,
       maxReps: firstSet ? firstSet.maxReps : 12,
       isDropSet: firstSet ? firstSet.isDropSet : false,
@@ -1603,7 +1603,7 @@ export default function AppContainer() {
         exerciseId: pe.exerciseId,
         elapsedSeconds: 0,
         sets: pe.sets.map((ps, idx) => ({
-          id: `${pe.id}_s_${idx}_${Date.now()}`,
+          id: `as_${crypto.randomUUID()}`,
           minReps: ps.minReps,
           maxReps: ps.maxReps,
           isDropSet: ps.isDropSet,
@@ -1700,7 +1700,7 @@ export default function AppContainer() {
           const firstSet = ex.sets[0];
           const lastSet = ex.sets[ex.sets.length - 1];
           const newSet: ActiveSet = {
-            id: `as_${Date.now()}_${ex.sets.length + 1}`,
+            id: `as_${crypto.randomUUID()}`,
             minReps: firstSet ? firstSet.minReps : 8,
             maxReps: firstSet ? firstSet.maxReps : 12,
             isDropSet: firstSet ? firstSet.isDropSet : false,
@@ -1744,12 +1744,12 @@ export default function AppContainer() {
     if (!activeWorkout) return;
 
     const newActiveEx: ActiveExercise = {
-      id: `ae_${Date.now()}`,
+      id: `ae_${crypto.randomUUID()}`,
       exerciseId: exerciseDef.id,
       elapsedSeconds: 0,
       sets: [
         {
-          id: `as_${Date.now()}_0`,
+          id: `as_${crypto.randomUUID()}`,
           minReps: 8,
           maxReps: 12,
           isDropSet: false,
@@ -1805,7 +1805,7 @@ export default function AppContainer() {
 
     if (completedExercises.length > 0) {
       const newLog: HistoryLog = {
-        id: `h_${Date.now()}`,
+        id: `h_${crypto.randomUUID()}`,
         name: activeWorkout.name,
         date: activeWorkout.startTime,
         durationMs: Date.now() - activeWorkout.startTime,
