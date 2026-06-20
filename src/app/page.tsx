@@ -959,7 +959,6 @@ export default function AppContainer() {
 
     channel
       .on("broadcast", { event: "data_changed" }, async (payload) => {
-        console.log("Broadcast received:", payload);
         const { table } = payload.payload;
 
         // Block outgoing pushes briefly while we pull
@@ -1064,9 +1063,7 @@ export default function AppContainer() {
         }
       })
       .subscribe((status) => {
-         if (status === 'SUBSCRIBED') {
-           console.log('Successfully subscribed to broadcast channel:', `sync-${user.id}`);
-         }
+         // Silently subscribe to broadcast channel
       });
 
     return () => {
