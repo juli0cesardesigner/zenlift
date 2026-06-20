@@ -225,6 +225,8 @@ export default function AppContainer() {
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  const [isImportPlanModalOpen, setIsImportPlanModalOpen] = useState(false);
+  const [importPlanText, setImportPlanText] = useState("");
   const [isMuscleDropdownOpen, setIsMuscleDropdownOpen] = useState(false);
 
   // Custom dialog/alert state
@@ -1460,6 +1462,107 @@ export default function AppContainer() {
     }
   };
 
+    const handleImportPlan = () => {
+      if (!importPlanText.trim()) return;
+      const lines = importPlanText.split('\n');
+
+      const parsedPlans: Record<string, Plan> = {};
+
+      let startIndex = 0;
+      if (lines.length > 0) {
+        const firstLineLower = lines[0].toLowerCase();
+        if (firstLineLower.includes("plano") && firstLineLower.includes("treino") && firstLineLower.includes("exercício")) {
+          startIndex = 1;
+        }
+      }
+
+      // Temporary local map to avoid creating duplicates and mapping names
+      const localExerciseMap: Record<string, string> = { ...Object.fromEntries(Object.values(exerciseMapByName).map(ex => [ex.name.toLowerCase().trim(), ex.id])) };
+      const newExercisesToCreate: ExerciseDef[] = [];
+
+      for (let i = startIndex; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const cols = line.split('\t');
+        // Esperado: Plano | Treino | Exercício | Séries | Reps Min | Reps Max | Descanso
+        if (cols.length >= 3) {
+          const planName = cols[0]?.trim() || "Plano Importado";
+          const workoutName = cols[1]?.trim() || "Treino A";
+          const exerciseNameRaw = cols[2]?.trim();
+
+          if (!exerciseNameRaw) continue;
+
+          let exerciseId = localExerciseMap[exerciseNameRaw.toLowerCase()];
+          if (!exerciseId) {
+            exerciseId = `ex_${crypto.randomUUID()}`;
+            const newEx: ExerciseDef = {
+              id: exerciseId,
+              name: exerciseNameRaw,
+              muscle: "Geral"
+            };
+            newExercisesToCreate.push(newEx);
+            localExerciseMap[exerciseNameRaw.toLowerCase()] = exerciseId;
+          }
+
+          const numSets = parseInt(cols[3]?.trim()) || 3;
+          const minReps = parseInt(cols[4]?.trim()) || 8;
+          const maxReps = parseInt(cols[5]?.trim()) || 12;
+          const restSeconds = parseInt(cols[6]?.trim()) || 60;
+
+          if (!parsedPlans[planName]) {
+            parsedPlans[planName] = {
+              id: `plan_${crypto.randomUUID()}`,
+              name: planName,
+              workouts: []
+            };
+          }
+
+          const plan = parsedPlans[planName];
+          let workout = plan.workouts.find(w => w.name === workoutName);
+          if (!workout) {
+            workout = {
+              id: `wk_${crypto.randomUUID()}`,
+              name: workoutName,
+              exercises: []
+            };
+            plan.workouts.push(workout);
+          }
+
+          const plannedSets: PlannedSet[] = [];
+          for (let s = 0; s < numSets; s++) {
+            plannedSets.push({
+              id: `ps_${crypto.randomUUID()}`,
+              minReps,
+              maxReps,
+              isDropSet: false,
+              isToFailure: false,
+              restSeconds
+            });
+          }
+
+          workout.exercises.push({
+            id: `pe_${crypto.randomUUID()}`,
+            exerciseId,
+            sets: plannedSets
+          });
+        }
+      }
+
+      const newPlans = Object.values(parsedPlans);
+      if (newPlans.length > 0) {
+        if (newExercisesToCreate.length > 0) {
+          setExercises(prev => [...prev, ...newExercisesToCreate]);
+        }
+        setPlans(prev => [...prev, ...newPlans]);
+        setImportPlanText("");
+        setIsImportPlanModalOpen(false);
+        alert(`${newPlans.length} plano(s) importado(s) com sucesso!`);
+      } else {
+        alert("Nenhum plano válido foi encontrado. Verifique o formato e tente novamente.");
+      }
+    };
+
   const toggleVisibleField = (field: string, checked: boolean) => {
     if (!editingExercise) return;
     const current = editingExercise.visibleFields || [];
@@ -2422,6 +2525,64 @@ export default function AppContainer() {
               className="w-full bg-vulcanico hover:bg-white text-noturno font-display text-xl uppercase py-4 rounded-xl font-bold transition-all disabled:opacity-50"
             >
               {isUploadingMedia ? "Salvando Mídia..." : "Salvar Alterações"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- IMPORT PLAN MODAL -------------------- */}
+      {isImportPlanModalOpen && (
+        <div className="absolute inset-0 z-50 bg-noturno flex flex-col overflow-hidden animate-fade-in">
+          {/* Header */}
+          <div className="flex-none p-6 pb-4 border-b border-concrete/20 flex justify-between items-center bg-noturno z-10 shadow-md">
+            <div>
+              <span className="font-mono text-[10px] text-concrete uppercase tracking-widest">Ação em Lote</span>
+              <h2 className="font-display text-3xl uppercase text-white leading-none mt-1">Importar Planos</h2>
+            </div>
+            <button
+              onClick={() => {
+                setIsImportPlanModalOpen(false);
+                setImportPlanText("");
+              }}
+              className="text-concrete hover:text-white transition-colors p-2"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+            <div className="bg-concrete/10 border border-concrete/20 rounded-xl p-4">
+              <h3 className="font-mono text-xs uppercase text-white font-bold mb-2">Instruções:</h3>
+              <p className="font-mono text-[10px] text-concrete mb-3 leading-relaxed">
+                Copie a tabela do seu Excel ou Google Sheets contendo seus planos e treinos e cole na caixa abaixo.
+                Se um exercício não existir, ele será criado automaticamente.
+              </p>
+              <p className="font-mono text-[10px] text-white font-bold mb-1">A ordem das colunas esperada é (separadas por TAB):</p>
+              <div className="bg-noturno p-2 rounded border border-concrete/10 overflow-x-auto whitespace-nowrap">
+                <code className="font-mono text-[9px] text-concrete">
+                  PLANO | TREINO | EXERCÍCIO | SÉRIES | REPS MÍN | REPS MÁX | DESCANSO(s)
+                </code>
+              </div>
+              <p className="font-mono text-[9px] text-concrete mt-2">
+                Ex: Hipertrofia [TAB] Treino A [TAB] Supino [TAB] 4 [TAB] 8 [TAB] 12 [TAB] 60
+              </p>
+            </div>
+
+            <textarea
+              value={importPlanText}
+              onChange={(e) => setImportPlanText(e.target.value)}
+              placeholder="Cole os dados da planilha aqui (Ctrl+V)..."
+              className="flex-1 min-h-[300px] bg-concrete/5 border border-concrete/20 rounded-xl p-4 font-mono text-[10px] text-white focus:outline-none focus:border-vulcanico transition-colors resize-none whitespace-pre"
+            />
+          </div>
+
+          <div className="flex-none p-6 bg-noturno border-t border-concrete/20">
+            <button
+              onClick={handleImportPlan}
+              disabled={!importPlanText.trim()}
+              className="w-full bg-vulcanico hover:bg-white text-noturno font-display text-xl uppercase py-4 rounded-xl font-bold transition-all disabled:opacity-50"
+            >
+              Processar e Importar
             </button>
           </div>
         </div>
@@ -3478,16 +3639,24 @@ export default function AppContainer() {
         {/* TAB: PLANOS */}
         {activeTab === "plans" && !editingPlan && (
           <div className="p-6 flex flex-col min-h-full">
-            <div className="flex justify-between items-end mb-8">
+            <div className="flex justify-between items-start mb-8">
               <h1 className="font-display text-4xl uppercase text-white tracking-tighter leading-none">Planos</h1>
-              <div className="flex items-center gap-4">
-                <button 
-                  onClick={handleStartCreatePlan}
-                  className="font-mono text-[11px] text-vulcanico uppercase tracking-widest underline hover:text-white"
-                >
-                  + Criar Plano
-                </button>
+              <div className="flex flex-col items-end gap-3">
                 {renderSyncButton()}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleStartCreatePlan}
+                    className="flex items-center gap-1.5 font-mono text-[9px] uppercase bg-vulcanico text-noturno px-2 py-1.5 rounded font-bold hover:bg-white transition-colors"
+                  >
+                    <Plus size={12} /> Criar Plano
+                  </button>
+                  <button
+                    onClick={() => setIsImportPlanModalOpen(true)}
+                    className="flex items-center gap-1.5 font-mono text-[9px] uppercase bg-concrete/10 border border-concrete/20 px-2 py-1.5 rounded text-white hover:bg-concrete/20 transition-colors"
+                  >
+                    <FileText size={12} /> Importar (Planilha)
+                  </button>
+                </div>
               </div>
             </div>
 
