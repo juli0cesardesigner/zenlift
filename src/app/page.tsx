@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { 
+  Play,
   CheckSquare, 
   Square, 
   Plus, 
@@ -33,6 +34,8 @@ type ExerciseDef = {
   id: string;
   name: string;
   muscle: string;
+  videoUrl?: string;
+  thumbnailUrl?: string;
 };
 
 type PlannedSet = {
@@ -191,6 +194,9 @@ export default function AppContainer() {
   // Exercise Library States
   const [newExerciseName, setNewExerciseName] = useState("");
   const [newExerciseMuscle, setNewExerciseMuscle] = useState("Peito");
+  const [newExerciseVideoFile, setNewExerciseVideoFile] = useState<File | null>(null);
+  const [newExerciseThumbnailFile, setNewExerciseThumbnailFile] = useState<File | null>(null);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
   const [isMuscleDropdownOpen, setIsMuscleDropdownOpen] = useState(false);
 
@@ -360,13 +366,15 @@ export default function AppContainer() {
       const customLocal = localExercises.filter(ex => ex.id.startsWith("ex_"));
       if (customLocal.length === 0) return;
 
-      const toUpsert = customLocal.map(ex => ({
+      const customToUpsert = customLocal.map(ex => ({
         id: ex.id,
         name: ex.name,
         muscle: ex.muscle,
-        user_id: userId
+        user_id: userId,
+        video_url: ex.videoUrl || null,
+        thumbnail_url: ex.thumbnailUrl || null
       }));
-      const { error: upErr } = await supabase.from("exercises").upsert(toUpsert);
+      const { error: upErr } = await supabase.from("exercises").upsert(customToUpsert);
       if (upErr) throw upErr;
 
       const upsertedIds = customLocal.map(ex => ex.id);
@@ -385,15 +393,17 @@ export default function AppContainer() {
     try {
       const { data, error } = await supabase
         .from("exercises")
-        .select("id, name, muscle")
+        .select("id, name, muscle, video_url, thumbnail_url")
         .eq("user_id", userId);
 
       if (error) throw error;
       if (!data) return [];
-      return data.map((ex: any) => ({
-        id: ex.id,
-        name: ex.name,
-        muscle: ex.muscle
+      return data.map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        muscle: row.muscle,
+        videoUrl: row.video_url || undefined,
+        thumbnailUrl: row.thumbnail_url || undefined
       }));
     } catch (e) {
       console.error("pullCustomExercisesFromSupabase error:", e);
@@ -1320,18 +1330,51 @@ export default function AppContainer() {
   };
 
   // --- ACTIONS: EXERCISE LIBRARY ---
-  const handleAddExercise = (e: React.FormEvent) => {
+  const handleAddExercise = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newExerciseName.trim()) return;
+
+    setIsUploadingMedia(true);
+    let videoUrl = undefined;
+    let thumbnailUrl = undefined;
+
+    try {
+      if (newExerciseVideoFile) {
+        const ext = newExerciseVideoFile.name.split('.').pop();
+        const filePath = `videos/${crypto.randomUUID()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage.from("exercise_media").upload(filePath, newExerciseVideoFile);
+        if (!uploadErr) {
+          const { data } = supabase.storage.from("exercise_media").getPublicUrl(filePath);
+          videoUrl = data.publicUrl;
+        }
+      }
+
+      if (newExerciseThumbnailFile) {
+        const ext = newExerciseThumbnailFile.name.split('.').pop();
+        const filePath = `thumbnails/${crypto.randomUUID()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage.from("exercise_media").upload(filePath, newExerciseThumbnailFile);
+        if (!uploadErr) {
+          const { data } = supabase.storage.from("exercise_media").getPublicUrl(filePath);
+          thumbnailUrl = data.publicUrl;
+        }
+      }
+    } catch (err) {
+      console.error("Error uploading media:", err);
+    }
 
     const newEx: ExerciseDef = {
       id: `ex_${crypto.randomUUID()}`,
       name: newExerciseName.trim(),
-      muscle: newExerciseMuscle
+      muscle: newExerciseMuscle,
+      videoUrl,
+      thumbnailUrl
     };
 
     setExercises(prev => [...prev, newEx]);
     setNewExerciseName("");
+    setNewExerciseVideoFile(null);
+    setNewExerciseThumbnailFile(null);
+    setIsUploadingMedia(false);
   };
 
   const handleDeleteExercise = (id: string) => {
@@ -2093,9 +2136,23 @@ export default function AppContainer() {
                       }
                     >
                         <div className="flex justify-between items-start mb-3">
-                          <h3 className="font-display text-2xl uppercase text-vulcanico leading-tight">
-                            {exDef?.name || "Desconhecido"}
-                          </h3>
+                          <div className="flex flex-col gap-1 w-full max-w-[65%]">
+                            <h3 className="font-display text-2xl uppercase text-vulcanico leading-tight">
+                              {exDef?.name || "Desconhecido"}
+                            </h3>
+                            {exDef?.videoUrl && !isQueued && (
+                              <div className="w-full mt-2 mb-2 rounded-lg overflow-hidden border border-concrete/20 bg-black">
+                                <video 
+                                  src={exDef.videoUrl} 
+                                  className="w-full h-auto max-h-[160px] object-cover mx-auto" 
+                                  autoPlay 
+                                  loop 
+                                  muted 
+                                  playsInline 
+                                />
+                              </div>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2">
                             {isExerciseCompleted && (
                               <button
@@ -3206,6 +3263,26 @@ export default function AppContainer() {
                 />
               </div>
 
+              <div className="flex flex-col gap-2 mt-4">
+                <label className="font-mono text-concrete text-[10px] uppercase tracking-widest">Thumbnail (Imagem)</label>
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={(e) => setNewExerciseThumbnailFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-concrete file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-[10px] file:font-mono file:uppercase file:font-bold file:bg-concrete/10 file:text-white hover:file:bg-concrete/20 transition-colors cursor-pointer"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2 mt-2">
+                <label className="font-mono text-concrete text-[10px] uppercase tracking-widest">Vídeo/GIF Demonstrativo</label>
+                <input 
+                  type="file" 
+                  accept="video/*,image/gif"
+                  onChange={(e) => setNewExerciseVideoFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-concrete file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-[10px] file:font-mono file:uppercase file:font-bold file:bg-concrete/10 file:text-white hover:file:bg-concrete/20 transition-colors cursor-pointer"
+                />
+              </div>
+
               <div className="flex items-center justify-between gap-4 mt-2 relative">
                 <div className="flex-1 relative">
                   <button
@@ -3237,10 +3314,10 @@ export default function AppContainer() {
 
                 <button 
                   type="submit"
-                  disabled={!newExerciseName.trim()}
+                  disabled={!newExerciseName.trim() || isUploadingMedia}
                   className="bg-vulcanico hover:bg-white text-noturno font-display text-sm uppercase px-4 py-2 disabled:opacity-30 transition-colors rounded-lg font-bold"
                 >
-                  Adicionar
+                  {isUploadingMedia ? "Enviando..." : "Adicionar"}
                 </button>
               </div>
             </form>
@@ -3258,9 +3335,25 @@ export default function AppContainer() {
                     <div className="flex flex-col gap-2">
                       {list.map(ex => (
                         <div key={ex.id} className="flex justify-between items-center py-2 group">
-                          <span className="font-display text-xl uppercase text-white group-hover:text-vulcanico transition-colors">
-                            {ex.name}
-                          </span>
+                          <div className="flex items-center gap-3">
+                            {ex.thumbnailUrl ? (
+                              <img src={ex.thumbnailUrl} alt={ex.name} className="w-10 h-10 object-cover rounded-md" />
+                            ) : (
+                              <div className="w-10 h-10 bg-concrete/10 rounded-md flex items-center justify-center">
+                                <Dumbbell size={16} className="text-concrete" />
+                              </div>
+                            )}
+                            <div className="flex flex-col">
+                              <span className="font-display text-xl uppercase text-white group-hover:text-vulcanico transition-colors">
+                                {ex.name}
+                              </span>
+                              {ex.videoUrl && (
+                                <span className="font-mono text-[9px] text-vulcanico uppercase tracking-widest flex items-center gap-1">
+                                  <Play size={8} fill="currentColor" /> Tem Vídeo
+                                </span>
+                              )}
+                            </div>
+                          </div>
                           <button
                             onClick={() => handleDeleteExercise(ex.id)}
                             className="text-concrete hover:text-red-500 transition-colors"
