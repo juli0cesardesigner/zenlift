@@ -204,21 +204,9 @@ export default function AppContainer() {
   // Exercise Library States
   const [newExerciseName, setNewExerciseName] = useState("");
   const [newExerciseMuscle, setNewExerciseMuscle] = useState("Peito");
-  const [newExerciseVideoFile, setNewExerciseVideoFile] = useState<File | null>(null);
-  const [newExerciseThumbnailFile, setNewExerciseThumbnailFile] = useState<File | null>(null);
-  
-  const [newExerciseSecondaryMuscles, setNewExerciseSecondaryMuscles] = useState<string>("");
-  const [newExerciseMechanicType, setNewExerciseMechanicType] = useState("");
-  const [newExerciseEquipment, setNewExerciseEquipment] = useState("");
-  const [newExerciseGripType, setNewExerciseGripType] = useState("");
-  const [newExerciseStance, setNewExerciseStance] = useState("");
-  const [newExerciseInstructions, setNewExerciseInstructions] = useState("");
-  const [newExerciseCommonMistakes, setNewExerciseCommonMistakes] = useState("");
-  const [newExerciseBreathing, setNewExerciseBreathing] = useState("");
-  const [newExerciseDifficulty, setNewExerciseDifficulty] = useState("");
-  const [newExerciseCategory, setNewExerciseCategory] = useState("");
-  
-  const [isAdvancedDetailsOpen, setIsAdvancedDetailsOpen] = useState(false);
+  const [editingExercise, setEditingExercise] = useState<ExerciseDef | null>(null);
+  const [editingExerciseVideoFile, setEditingExerciseVideoFile] = useState<File | null>(null);
+  const [editingExerciseThumbnailFile, setEditingExerciseThumbnailFile] = useState<File | null>(null);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
   const [isMuscleDropdownOpen, setIsMuscleDropdownOpen] = useState(false);
@@ -1373,29 +1361,42 @@ export default function AppContainer() {
   };
 
   // --- ACTIONS: EXERCISE LIBRARY ---
-  const handleAddExercise = async (e: React.FormEvent) => {
+  const handleAddExercise = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newExerciseName.trim()) return;
 
+    const newEx: ExerciseDef = {
+      id: `ex_${crypto.randomUUID()}`,
+      name: newExerciseName.trim(),
+      muscle: newExerciseMuscle
+    };
+
+    setExercises(prev => [...prev, newEx]);
+    setNewExerciseName("");
+  };
+
+  const handleSaveExerciseDetails = async () => {
+    if (!editingExercise) return;
+    
     setIsUploadingMedia(true);
-    let videoUrl = undefined;
-    let thumbnailUrl = undefined;
+    let videoUrl = editingExercise.videoUrl;
+    let thumbnailUrl = editingExercise.thumbnailUrl;
 
     try {
-      if (newExerciseVideoFile) {
-        const ext = newExerciseVideoFile.name.split('.').pop();
+      if (editingExerciseVideoFile) {
+        const ext = editingExerciseVideoFile.name.split('.').pop();
         const filePath = `videos/${crypto.randomUUID()}.${ext}`;
-        const { error: uploadErr } = await supabase.storage.from("exercise_media").upload(filePath, newExerciseVideoFile);
+        const { error: uploadErr } = await supabase.storage.from("exercise_media").upload(filePath, editingExerciseVideoFile);
         if (!uploadErr) {
           const { data } = supabase.storage.from("exercise_media").getPublicUrl(filePath);
           videoUrl = data.publicUrl;
         }
       }
 
-      if (newExerciseThumbnailFile) {
-        const ext = newExerciseThumbnailFile.name.split('.').pop();
+      if (editingExerciseThumbnailFile) {
+        const ext = editingExerciseThumbnailFile.name.split('.').pop();
         const filePath = `thumbnails/${crypto.randomUUID()}.${ext}`;
-        const { error: uploadErr } = await supabase.storage.from("exercise_media").upload(filePath, newExerciseThumbnailFile);
+        const { error: uploadErr } = await supabase.storage.from("exercise_media").upload(filePath, editingExerciseThumbnailFile);
         if (!uploadErr) {
           const { data } = supabase.storage.from("exercise_media").getPublicUrl(filePath);
           thumbnailUrl = data.publicUrl;
@@ -1405,39 +1406,16 @@ export default function AppContainer() {
       console.error("Error uploading media:", err);
     }
 
-    const newEx: ExerciseDef = {
-      id: `ex_${crypto.randomUUID()}`,
-      name: newExerciseName.trim(),
-      muscle: newExerciseMuscle,
+    const updatedEx: ExerciseDef = {
+      ...editingExercise,
       videoUrl,
       thumbnailUrl,
-      secondaryMuscles: newExerciseSecondaryMuscles.split(',').map(s => s.trim()).filter(Boolean),
-      mechanicType: newExerciseMechanicType,
-      equipment: newExerciseEquipment,
-      gripType: newExerciseGripType,
-      stance: newExerciseStance,
-      instructions: newExerciseInstructions,
-      commonMistakes: newExerciseCommonMistakes,
-      breathing: newExerciseBreathing,
-      difficultyLevel: newExerciseDifficulty,
-      exerciseCategory: newExerciseCategory
     };
 
-    setExercises(prev => [...prev, newEx]);
-    setNewExerciseName("");
-    setNewExerciseVideoFile(null);
-    setNewExerciseThumbnailFile(null);
-    setNewExerciseSecondaryMuscles("");
-    setNewExerciseMechanicType("");
-    setNewExerciseEquipment("");
-    setNewExerciseGripType("");
-    setNewExerciseStance("");
-    setNewExerciseInstructions("");
-    setNewExerciseCommonMistakes("");
-    setNewExerciseBreathing("");
-    setNewExerciseDifficulty("");
-    setNewExerciseCategory("");
-    setIsAdvancedDetailsOpen(false);
+    setExercises(prev => prev.map(ex => ex.id === updatedEx.id ? updatedEx : ex));
+    setEditingExercise(null);
+    setEditingExerciseVideoFile(null);
+    setEditingExerciseThumbnailFile(null);
     setIsUploadingMedia(false);
   };
 
@@ -2107,6 +2085,141 @@ export default function AppContainer() {
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden bg-noturno text-white">
       
+      {/* -------------------- EDIT EXERCISE MODAL -------------------- */}
+      {editingExercise && (
+        <div className="absolute inset-0 z-50 bg-noturno flex flex-col overflow-hidden animate-fade-in">
+          {/* Header */}
+          <div className="flex-none p-6 pb-4 border-b border-concrete/20 flex justify-between items-center bg-noturno z-10 shadow-md">
+            <div className="flex flex-col">
+              <span className="font-mono text-[10px] text-concrete uppercase tracking-widest">{editingExercise.muscle}</span>
+              <h2 className="font-display text-3xl uppercase text-white leading-none mt-1">{editingExercise.name}</h2>
+            </div>
+            <button 
+              onClick={() => {
+                setEditingExercise(null);
+                setEditingExerciseVideoFile(null);
+                setEditingExerciseThumbnailFile(null);
+              }} 
+              className="text-concrete hover:text-white transition-colors p-2"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8 pb-32">
+            
+            {/* Secao de Midia */}
+            <div className="flex flex-col gap-4">
+              <h3 className="font-mono text-vulcanico text-xs uppercase font-bold tracking-widest border-b border-concrete/10 pb-2">Mídia Demonstrativa</h3>
+              
+              <div className="flex flex-col gap-2">
+                <label className="font-mono text-concrete text-[10px] uppercase tracking-widest">Thumbnail (Imagem)</label>
+                {editingExercise.thumbnailUrl && !editingExerciseThumbnailFile && (
+                   <img src={editingExercise.thumbnailUrl} alt="Thumbnail" className="w-24 h-24 object-cover rounded-lg border border-concrete/20 mb-2" />
+                )}
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={(e) => setEditingExerciseThumbnailFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-concrete file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-[10px] file:font-mono file:uppercase file:font-bold file:bg-concrete/10 file:text-white hover:file:bg-concrete/20 transition-colors cursor-pointer"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2 mt-2">
+                <label className="font-mono text-concrete text-[10px] uppercase tracking-widest">Vídeo/GIF Demonstrativo</label>
+                {editingExercise.videoUrl && !editingExerciseVideoFile && (
+                   <video src={editingExercise.videoUrl} className="w-full max-h-[200px] object-cover rounded-lg border border-concrete/20 mb-2 bg-black" controls />
+                )}
+                <input 
+                  type="file" 
+                  accept="video/*,image/gif"
+                  onChange={(e) => setEditingExerciseVideoFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-concrete file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-[10px] file:font-mono file:uppercase file:font-bold file:bg-concrete/10 file:text-white hover:file:bg-concrete/20 transition-colors cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* Secao Detalhes Tecnicos */}
+            <div className="flex flex-col gap-4">
+              <h3 className="font-mono text-vulcanico text-xs uppercase font-bold tracking-widest border-b border-concrete/10 pb-2">Detalhes Técnicos</h3>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="font-mono text-concrete text-[10px] uppercase">Músculos Secundários</label>
+                  <input type="text" value={editingExercise.secondaryMuscles?.join(", ") || ""} onChange={(e) => setEditingExercise({...editingExercise, secondaryMuscles: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)})} placeholder="Ex: Tríceps, Ombro" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="font-mono text-concrete text-[10px] uppercase">Mecânica</label>
+                  <select value={editingExercise.mechanicType || ""} onChange={(e) => setEditingExercise({...editingExercise, mechanicType: e.target.value})} className="w-full bg-noturno border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors">
+                    <option value="">Selecione...</option>
+                    <option value="Composto">Composto</option>
+                    <option value="Isolado">Isolado</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="font-mono text-concrete text-[10px] uppercase">Equipamento</label>
+                  <input type="text" value={editingExercise.equipment || ""} onChange={(e) => setEditingExercise({...editingExercise, equipment: e.target.value})} placeholder="Ex: Halter" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="font-mono text-concrete text-[10px] uppercase">Dificuldade</label>
+                  <select value={editingExercise.difficultyLevel || ""} onChange={(e) => setEditingExercise({...editingExercise, difficultyLevel: e.target.value})} className="w-full bg-noturno border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors">
+                    <option value="">Selecione...</option>
+                    <option value="Iniciante">Iniciante</option>
+                    <option value="Intermediário">Intermediário</option>
+                    <option value="Avançado">Avançado</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="font-mono text-concrete text-[10px] uppercase">Pegada</label>
+                  <input type="text" value={editingExercise.gripType || ""} onChange={(e) => setEditingExercise({...editingExercise, gripType: e.target.value})} placeholder="Ex: Pronada" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="font-mono text-concrete text-[10px] uppercase">Postura</label>
+                  <input type="text" value={editingExercise.stance || ""} onChange={(e) => setEditingExercise({...editingExercise, stance: e.target.value})} placeholder="Ex: Unilateral" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-concrete text-[10px] uppercase">Categoria</label>
+                <input type="text" value={editingExercise.exerciseCategory || ""} onChange={(e) => setEditingExercise({...editingExercise, exerciseCategory: e.target.value})} placeholder="Ex: Hipertrofia, Cardio" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
+              </div>
+
+              <div className="flex flex-col gap-1 mt-2">
+                <label className="font-mono text-concrete text-[10px] uppercase">Instruções Passo a Passo</label>
+                <textarea value={editingExercise.instructions || ""} onChange={(e) => setEditingExercise({...editingExercise, instructions: e.target.value})} placeholder="Descreva os passos para a execução correta" className="w-full bg-concrete/5 border border-concrete/20 rounded-lg p-3 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors resize-none h-32" />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-concrete text-[10px] uppercase">Erros Comuns</label>
+                <textarea value={editingExercise.commonMistakes || ""} onChange={(e) => setEditingExercise({...editingExercise, commonMistakes: e.target.value})} placeholder="O que não fazer" className="w-full bg-concrete/5 border border-concrete/20 rounded-lg p-3 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors resize-none h-24" />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-concrete text-[10px] uppercase">Respiração</label>
+                <input type="text" value={editingExercise.breathing || ""} onChange={(e) => setEditingExercise({...editingExercise, breathing: e.target.value})} placeholder="Ex: Expire na subida" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
+              </div>
+            </div>
+            
+          </div>
+          
+          <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-noturno via-noturno/90 to-transparent pt-12">
+            <button 
+              onClick={handleSaveExerciseDetails}
+              disabled={isUploadingMedia}
+              className="w-full bg-vulcanico hover:bg-white text-noturno font-display text-xl uppercase py-4 rounded-xl font-bold transition-all disabled:opacity-50"
+            >
+              {isUploadingMedia ? "Salvando Mídia..." : "Salvar Alterações"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* -------------------- ACTIVE WORKOUT OVERLAY -------------------- */}
       {activeWorkout && (
         <div className="absolute inset-0 z-40 bg-noturno flex flex-col overflow-hidden">
@@ -3327,101 +3440,6 @@ export default function AppContainer() {
                 />
               </div>
 
-              <div className="flex flex-col gap-2 mt-4">
-                <label className="font-mono text-concrete text-[10px] uppercase tracking-widest">Thumbnail (Imagem)</label>
-                <input 
-                  type="file" 
-                  accept="image/*"
-                  onChange={(e) => setNewExerciseThumbnailFile(e.target.files?.[0] || null)}
-                  className="w-full text-xs text-concrete file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-[10px] file:font-mono file:uppercase file:font-bold file:bg-concrete/10 file:text-white hover:file:bg-concrete/20 transition-colors cursor-pointer"
-                />
-              </div>
-
-              <div className="flex flex-col gap-2 mt-2">
-                <label className="font-mono text-concrete text-[10px] uppercase tracking-widest">Vídeo/GIF Demonstrativo</label>
-                <input 
-                  type="file" 
-                  accept="video/*,image/gif"
-                  onChange={(e) => setNewExerciseVideoFile(e.target.files?.[0] || null)}
-                  className="w-full text-xs text-concrete file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-[10px] file:font-mono file:uppercase file:font-bold file:bg-concrete/10 file:text-white hover:file:bg-concrete/20 transition-colors cursor-pointer"
-                />
-              </div>
-              <div className="mt-4 border border-concrete/20 rounded-lg overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setIsAdvancedDetailsOpen(!isAdvancedDetailsOpen)}
-                  className="w-full bg-concrete/5 hover:bg-concrete/10 transition-colors p-3 flex justify-between items-center"
-                >
-                  <span className="font-mono text-xs uppercase text-white tracking-widest">+ Detalhes Técnicos</span>
-                  {isAdvancedDetailsOpen ? <ChevronUp size={16} className="text-concrete" /> : <ChevronDown size={16} className="text-concrete" />}
-                </button>
-                {isAdvancedDetailsOpen && (
-                  <div className="p-4 flex flex-col gap-4 bg-noturno">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col gap-1">
-                        <label className="font-mono text-concrete text-[10px] uppercase">Músculos Secundários</label>
-                        <input type="text" value={newExerciseSecondaryMuscles} onChange={(e) => setNewExerciseSecondaryMuscles(e.target.value)} placeholder="Ex: Tríceps, Ombro" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-mono text-concrete text-[10px] uppercase">Mecânica</label>
-                        <select value={newExerciseMechanicType} onChange={(e) => setNewExerciseMechanicType(e.target.value)} className="w-full bg-noturno border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors">
-                          <option value="">Selecione...</option>
-                          <option value="Composto">Composto</option>
-                          <option value="Isolado">Isolado</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col gap-1">
-                        <label className="font-mono text-concrete text-[10px] uppercase">Equipamento</label>
-                        <input type="text" value={newExerciseEquipment} onChange={(e) => setNewExerciseEquipment(e.target.value)} placeholder="Ex: Halter, Barra, Máquina" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-mono text-concrete text-[10px] uppercase">Dificuldade</label>
-                        <select value={newExerciseDifficulty} onChange={(e) => setNewExerciseDifficulty(e.target.value)} className="w-full bg-noturno border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors">
-                          <option value="">Selecione...</option>
-                          <option value="Iniciante">Iniciante</option>
-                          <option value="Intermediário">Intermediário</option>
-                          <option value="Avançado">Avançado</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col gap-1">
-                        <label className="font-mono text-concrete text-[10px] uppercase">Pegada</label>
-                        <input type="text" value={newExerciseGripType} onChange={(e) => setNewExerciseGripType(e.target.value)} placeholder="Ex: Pronada, Neutra" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-mono text-concrete text-[10px] uppercase">Postura</label>
-                        <input type="text" value={newExerciseStance} onChange={(e) => setNewExerciseStance(e.target.value)} placeholder="Ex: Unilateral, Bilateral" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <label className="font-mono text-concrete text-[10px] uppercase">Categoria</label>
-                      <input type="text" value={newExerciseCategory} onChange={(e) => setNewExerciseCategory(e.target.value)} placeholder="Ex: Hipertrofia, Cardio" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <label className="font-mono text-concrete text-[10px] uppercase">Instruções Passo a Passo</label>
-                      <textarea value={newExerciseInstructions} onChange={(e) => setNewExerciseInstructions(e.target.value)} placeholder="Descreva os passos para a execução correta" className="w-full bg-transparent border border-concrete/30 rounded-lg p-2 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors resize-none h-20" />
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <label className="font-mono text-concrete text-[10px] uppercase">Erros Comuns</label>
-                      <textarea value={newExerciseCommonMistakes} onChange={(e) => setNewExerciseCommonMistakes(e.target.value)} placeholder="O que não fazer" className="w-full bg-transparent border border-concrete/30 rounded-lg p-2 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors resize-none h-16" />
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <label className="font-mono text-concrete text-[10px] uppercase">Respiração</label>
-                      <input type="text" value={newExerciseBreathing} onChange={(e) => setNewExerciseBreathing(e.target.value)} placeholder="Ex: Expire na subida" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
-                    </div>
-
-                  </div>
-                )}
-              </div>
               <div className="flex items-center justify-between gap-4 mt-2 relative">
                 <div className="flex-1 relative">
                   <button
@@ -3453,10 +3471,10 @@ export default function AppContainer() {
 
                 <button 
                   type="submit"
-                  disabled={!newExerciseName.trim() || isUploadingMedia}
+                  disabled={!newExerciseName.trim()}
                   className="bg-vulcanico hover:bg-white text-noturno font-display text-sm uppercase px-4 py-2 disabled:opacity-30 transition-colors rounded-lg font-bold"
                 >
-                  {isUploadingMedia ? "Enviando..." : "Adicionar"}
+                  Adicionar
                 </button>
               </div>
             </form>
@@ -3473,8 +3491,8 @@ export default function AppContainer() {
                     </span>
                     <div className="flex flex-col gap-2">
                       {list.map(ex => (
-                        <div key={ex.id} className="flex justify-between items-center py-2 group">
-                          <div className="flex items-center gap-3">
+                        <div key={ex.id} className="flex justify-between items-center py-2 group cursor-pointer hover:bg-concrete/5 px-2 -mx-2 rounded-lg transition-colors">
+                          <div className="flex items-center gap-3 flex-1" onClick={() => setEditingExercise(ex)}>
                             {ex.thumbnailUrl ? (
                               <img src={ex.thumbnailUrl} alt={ex.name} className="w-10 h-10 object-cover rounded-md" />
                             ) : (
