@@ -36,6 +36,16 @@ type ExerciseDef = {
   muscle: string;
   videoUrl?: string;
   thumbnailUrl?: string;
+  secondaryMuscles?: string[];
+  mechanicType?: string;
+  equipment?: string;
+  gripType?: string;
+  stance?: string;
+  instructions?: string;
+  commonMistakes?: string;
+  breathing?: string;
+  difficultyLevel?: string;
+  exerciseCategory?: string;
 };
 
 type PlannedSet = {
@@ -196,6 +206,19 @@ export default function AppContainer() {
   const [newExerciseMuscle, setNewExerciseMuscle] = useState("Peito");
   const [newExerciseVideoFile, setNewExerciseVideoFile] = useState<File | null>(null);
   const [newExerciseThumbnailFile, setNewExerciseThumbnailFile] = useState<File | null>(null);
+  
+  const [newExerciseSecondaryMuscles, setNewExerciseSecondaryMuscles] = useState<string>("");
+  const [newExerciseMechanicType, setNewExerciseMechanicType] = useState("");
+  const [newExerciseEquipment, setNewExerciseEquipment] = useState("");
+  const [newExerciseGripType, setNewExerciseGripType] = useState("");
+  const [newExerciseStance, setNewExerciseStance] = useState("");
+  const [newExerciseInstructions, setNewExerciseInstructions] = useState("");
+  const [newExerciseCommonMistakes, setNewExerciseCommonMistakes] = useState("");
+  const [newExerciseBreathing, setNewExerciseBreathing] = useState("");
+  const [newExerciseDifficulty, setNewExerciseDifficulty] = useState("");
+  const [newExerciseCategory, setNewExerciseCategory] = useState("");
+  
+  const [isAdvancedDetailsOpen, setIsAdvancedDetailsOpen] = useState(false);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
   const [isMuscleDropdownOpen, setIsMuscleDropdownOpen] = useState(false);
@@ -372,7 +395,17 @@ export default function AppContainer() {
         muscle: ex.muscle,
         user_id: userId,
         video_url: ex.videoUrl || null,
-        thumbnail_url: ex.thumbnailUrl || null
+        thumbnail_url: ex.thumbnailUrl || null,
+        secondary_muscles: ex.secondaryMuscles || [],
+        mechanic_type: ex.mechanicType || null,
+        equipment: ex.equipment || null,
+        grip_type: ex.gripType || null,
+        stance: ex.stance || null,
+        instructions: ex.instructions || null,
+        common_mistakes: ex.commonMistakes || null,
+        breathing: ex.breathing || null,
+        difficulty_level: ex.difficultyLevel || null,
+        exercise_category: ex.exerciseCategory || null
       }));
       const { error: upErr } = await supabase.from("exercises").upsert(customToUpsert);
       if (upErr) throw upErr;
@@ -393,7 +426,7 @@ export default function AppContainer() {
     try {
       const { data, error } = await supabase
         .from("exercises")
-        .select("id, name, muscle, video_url, thumbnail_url")
+        .select("id, name, muscle, video_url, thumbnail_url, secondary_muscles, mechanic_type, equipment, grip_type, stance, instructions, common_mistakes, breathing, difficulty_level, exercise_category")
         .eq("user_id", userId);
 
       if (error) throw error;
@@ -403,7 +436,17 @@ export default function AppContainer() {
         name: row.name,
         muscle: row.muscle,
         videoUrl: row.video_url || undefined,
-        thumbnailUrl: row.thumbnail_url || undefined
+        thumbnailUrl: row.thumbnail_url || undefined,
+        secondaryMuscles: row.secondary_muscles || [],
+        mechanicType: row.mechanic_type || undefined,
+        equipment: row.equipment || undefined,
+        gripType: row.grip_type || undefined,
+        stance: row.stance || undefined,
+        instructions: row.instructions || undefined,
+        commonMistakes: row.common_mistakes || undefined,
+        breathing: row.breathing || undefined,
+        difficultyLevel: row.difficulty_level || undefined,
+        exerciseCategory: row.exercise_category || undefined
       }));
     } catch (e) {
       console.error("pullCustomExercisesFromSupabase error:", e);
@@ -1367,13 +1410,34 @@ export default function AppContainer() {
       name: newExerciseName.trim(),
       muscle: newExerciseMuscle,
       videoUrl,
-      thumbnailUrl
+      thumbnailUrl,
+      secondaryMuscles: newExerciseSecondaryMuscles.split(',').map(s => s.trim()).filter(Boolean),
+      mechanicType: newExerciseMechanicType,
+      equipment: newExerciseEquipment,
+      gripType: newExerciseGripType,
+      stance: newExerciseStance,
+      instructions: newExerciseInstructions,
+      commonMistakes: newExerciseCommonMistakes,
+      breathing: newExerciseBreathing,
+      difficultyLevel: newExerciseDifficulty,
+      exerciseCategory: newExerciseCategory
     };
 
     setExercises(prev => [...prev, newEx]);
     setNewExerciseName("");
     setNewExerciseVideoFile(null);
     setNewExerciseThumbnailFile(null);
+    setNewExerciseSecondaryMuscles("");
+    setNewExerciseMechanicType("");
+    setNewExerciseEquipment("");
+    setNewExerciseGripType("");
+    setNewExerciseStance("");
+    setNewExerciseInstructions("");
+    setNewExerciseCommonMistakes("");
+    setNewExerciseBreathing("");
+    setNewExerciseDifficulty("");
+    setNewExerciseCategory("");
+    setIsAdvancedDetailsOpen(false);
     setIsUploadingMedia(false);
   };
 
@@ -3282,7 +3346,82 @@ export default function AppContainer() {
                   className="w-full text-xs text-concrete file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-[10px] file:font-mono file:uppercase file:font-bold file:bg-concrete/10 file:text-white hover:file:bg-concrete/20 transition-colors cursor-pointer"
                 />
               </div>
+              <div className="mt-4 border border-concrete/20 rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setIsAdvancedDetailsOpen(!isAdvancedDetailsOpen)}
+                  className="w-full bg-concrete/5 hover:bg-concrete/10 transition-colors p-3 flex justify-between items-center"
+                >
+                  <span className="font-mono text-xs uppercase text-white tracking-widest">+ Detalhes Técnicos</span>
+                  {isAdvancedDetailsOpen ? <ChevronUp size={16} className="text-concrete" /> : <ChevronDown size={16} className="text-concrete" />}
+                </button>
+                {isAdvancedDetailsOpen && (
+                  <div className="p-4 flex flex-col gap-4 bg-noturno">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1">
+                        <label className="font-mono text-concrete text-[10px] uppercase">Músculos Secundários</label>
+                        <input type="text" value={newExerciseSecondaryMuscles} onChange={(e) => setNewExerciseSecondaryMuscles(e.target.value)} placeholder="Ex: Tríceps, Ombro" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="font-mono text-concrete text-[10px] uppercase">Mecânica</label>
+                        <select value={newExerciseMechanicType} onChange={(e) => setNewExerciseMechanicType(e.target.value)} className="w-full bg-noturno border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors">
+                          <option value="">Selecione...</option>
+                          <option value="Composto">Composto</option>
+                          <option value="Isolado">Isolado</option>
+                        </select>
+                      </div>
+                    </div>
 
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1">
+                        <label className="font-mono text-concrete text-[10px] uppercase">Equipamento</label>
+                        <input type="text" value={newExerciseEquipment} onChange={(e) => setNewExerciseEquipment(e.target.value)} placeholder="Ex: Halter, Barra, Máquina" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="font-mono text-concrete text-[10px] uppercase">Dificuldade</label>
+                        <select value={newExerciseDifficulty} onChange={(e) => setNewExerciseDifficulty(e.target.value)} className="w-full bg-noturno border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors">
+                          <option value="">Selecione...</option>
+                          <option value="Iniciante">Iniciante</option>
+                          <option value="Intermediário">Intermediário</option>
+                          <option value="Avançado">Avançado</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1">
+                        <label className="font-mono text-concrete text-[10px] uppercase">Pegada</label>
+                        <input type="text" value={newExerciseGripType} onChange={(e) => setNewExerciseGripType(e.target.value)} placeholder="Ex: Pronada, Neutra" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="font-mono text-concrete text-[10px] uppercase">Postura</label>
+                        <input type="text" value={newExerciseStance} onChange={(e) => setNewExerciseStance(e.target.value)} placeholder="Ex: Unilateral, Bilateral" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="font-mono text-concrete text-[10px] uppercase">Categoria</label>
+                      <input type="text" value={newExerciseCategory} onChange={(e) => setNewExerciseCategory(e.target.value)} placeholder="Ex: Hipertrofia, Cardio" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="font-mono text-concrete text-[10px] uppercase">Instruções Passo a Passo</label>
+                      <textarea value={newExerciseInstructions} onChange={(e) => setNewExerciseInstructions(e.target.value)} placeholder="Descreva os passos para a execução correta" className="w-full bg-transparent border border-concrete/30 rounded-lg p-2 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors resize-none h-20" />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="font-mono text-concrete text-[10px] uppercase">Erros Comuns</label>
+                      <textarea value={newExerciseCommonMistakes} onChange={(e) => setNewExerciseCommonMistakes(e.target.value)} placeholder="O que não fazer" className="w-full bg-transparent border border-concrete/30 rounded-lg p-2 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors resize-none h-16" />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="font-mono text-concrete text-[10px] uppercase">Respiração</label>
+                      <input type="text" value={newExerciseBreathing} onChange={(e) => setNewExerciseBreathing(e.target.value)} placeholder="Ex: Expire na subida" className="w-full bg-transparent border-b border-concrete/30 py-1 font-display text-sm text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                    </div>
+
+                  </div>
+                )}
+              </div>
               <div className="flex items-center justify-between gap-4 mt-2 relative">
                 <div className="flex-1 relative">
                   <button
