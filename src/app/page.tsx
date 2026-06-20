@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { 
   Play, 
   CheckSquare, 
@@ -252,6 +252,21 @@ export default function AppContainer() {
       localStorage.setItem("is_deleted_plans_v1", JSON.stringify(deletedPlanIdsRef.current));
     }
   };
+
+  // Pre-compute an exercise map for O(1) lookups instead of O(N) .find() inside loops
+  const exerciseMap = useMemo(() => {
+    return exercises.reduce((acc, ex) => {
+      acc[ex.id] = ex;
+      return acc;
+    }, {} as Record<string, ExerciseDef>);
+  }, [exercises]);
+
+  const exerciseMapByName = useMemo(() => {
+    return exercises.reduce((acc, ex) => {
+      acc[ex.name] = ex;
+      return acc;
+    }, {} as Record<string, ExerciseDef>);
+  }, [exercises]);
   const addDeletedExerciseId = (id: string) => {
     if (!deletedExerciseIdsRef.current.includes(id)) {
       deletedExerciseIdsRef.current = [...deletedExerciseIdsRef.current, id];
@@ -1646,7 +1661,7 @@ export default function AppContainer() {
 
             // Trigger Rest Timer if completing (and not the absolute last set of the workout)
             if (field === "completed" && value === true && s.restSeconds > 0 && !s.completed && !isLastSetOfWorkout) {
-              const exDef = exercises.find(e => e.id === ex.exerciseId);
+              const exDef = exerciseMap[ex.exerciseId];
               const setIndex = ex.sets.findIndex(set => set.id === setId) + 1;
               setRestTimer({
                 duration: s.restSeconds,
@@ -1766,7 +1781,7 @@ export default function AppContainer() {
 
     let totalVolume = 0;
     const completedExercises = activeWorkout.exercises.map(ae => {
-      const exDef = exercises.find(e => e.id === ae.exerciseId);
+      const exDef = exerciseMap[ae.exerciseId];
       const doneSets = ae.sets.filter(s => s.completed && s.reps && s.weight);
 
       doneSets.forEach(s => {
@@ -1876,7 +1891,7 @@ export default function AppContainer() {
   filteredLogs.forEach(log => {
     const sessionMuscles = new Set<string>();
     log.exercises.forEach(ex => {
-      const def = exercises.find(e => e.name === ex.name);
+      const def = exerciseMapByName[ex.name];
       const muscle = def?.muscle || "Outros";
       const count = ex.sets.length;
       
@@ -2024,7 +2039,7 @@ export default function AppContainer() {
                 </div>
               ) : (
                 activeWorkout.exercises.map((ae, aeIdx) => {
-                  const exDef = exercises.find(e => e.id === ae.exerciseId);
+                  const exDef = exerciseMap[ae.exerciseId];
                   const distance = aeIdx - resolvedActiveExerciseIndex;
                   const isQueued = distance > 0;
                   const isExerciseCompleted = ae.sets.every(s => s.completed);
@@ -2495,7 +2510,7 @@ export default function AppContainer() {
                       ) : (
                         <div className="flex flex-col gap-4">
                           {editingWorkout.exercises.map((pe) => {
-                            const exDef = exercises.find(e => e.id === pe.exerciseId);
+                            const exDef = exerciseMap[pe.exerciseId];
                             return (
                               <div key={pe.id} className="flex items-center justify-between py-2 border-b border-concrete/10">
                                 <div>
@@ -2696,7 +2711,7 @@ export default function AppContainer() {
             <div>
               <span className="font-mono text-[9px] text-concrete uppercase tracking-widest">Configurar Séries</span>
               <h2 className="font-display text-2xl uppercase text-white leading-none mt-1">
-                {exercises.find(e => e.id === configuringExercise.exercise.exerciseId)?.name || "Exercício"}
+                {exerciseMap[configuringExercise.exercise.exerciseId]?.name || "Exercício"}
               </h2>
             </div>
             <div className="flex items-center gap-4">
@@ -3354,7 +3369,7 @@ export default function AppContainer() {
               ) : (
                 <div className="flex flex-col gap-3">
                   {focusedExercises.map(focusedName => {
-                    const def = exercises.find(e => e.name === focusedName);
+                    const def = exerciseMapByName[focusedName];
                     
                     // Retrieve historical logs containing this exercise
                     let maxWeight = 0;
