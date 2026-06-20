@@ -229,6 +229,11 @@ export default function AppContainer() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
   const [lastSyncedTime, setLastSyncedTime] = useState<number | null>(null);
 
+  // Deletion tracking states
+  const [deletedPlanIds, setDeletedPlanIds] = useState<string[]>([]);
+  const [deletedExerciseIds, setDeletedExerciseIds] = useState<string[]>([]);
+  const [deletedHistoryIds, setDeletedHistoryIds] = useState<string[]>([]);
+
   // Load state from local storage on mount
   useEffect(() => {
     const storedEx = localStorage.getItem("is_exercises_v3");
@@ -260,6 +265,15 @@ export default function AppContainer() {
     const storedFocused = localStorage.getItem("is_focused_exercises_v1");
     if (storedFocused) setFocusedExercises(JSON.parse(storedFocused));
 
+    const storedDeletedPlans = localStorage.getItem("is_deleted_plans_v1");
+    if (storedDeletedPlans) setDeletedPlanIds(JSON.parse(storedDeletedPlans));
+
+    const storedDeletedExercises = localStorage.getItem("is_deleted_exercises_v1");
+    if (storedDeletedExercises) setDeletedExerciseIds(JSON.parse(storedDeletedExercises));
+
+    const storedDeletedHistory = localStorage.getItem("is_deleted_history_v1");
+    if (storedDeletedHistory) setDeletedHistoryIds(JSON.parse(storedDeletedHistory));
+
     setIsLoaded(true);
   }, []);
 
@@ -277,26 +291,21 @@ export default function AppContainer() {
   }, []);
 
   // --- SUPABASE SYNCHRONIZATION HELPERS ---
-  const pushCustomExercisesToSupabase = async (userId: string, localExercises: ExerciseDef[]) => {
+  const pushCustomExercisesToSupabase = async (userId: string, localExercises: ExerciseDef[], deletedIds: string[]) => {
     try {
-      const customLocal = localExercises.filter(ex => ex.id.startsWith("ex_"));
-      const localCustomIds = customLocal.map(ex => ex.id);
-
-      if (localCustomIds.length > 0) {
+      // 1. Delete explicitly deleted exercises from Supabase
+      if (deletedIds.length > 0) {
         const { error: delErr } = await supabase
           .from("exercises")
           .delete()
           .eq("user_id", userId)
-          .not("id", "in", `(${localCustomIds.join(",")})`);
+          .in("id", deletedIds);
         if (delErr) throw delErr;
-      } else {
-        const { error: delErr } = await supabase
-          .from("exercises")
-          .delete()
-          .eq("user_id", userId);
-        if (delErr) throw delErr;
+        setDeletedExerciseIds(prev => prev.filter(id => !deletedIds.includes(id)));
       }
 
+      // 2. Upsert remaining custom exercises
+      const customLocal = localExercises.filter(ex => ex.id.startsWith("ex_"));
       if (customLocal.length === 0) return;
 
       const toUpsert = customLocal.map(ex => ({
@@ -332,24 +341,17 @@ export default function AppContainer() {
     }
   };
 
-  const pushPlansToSupabase = async (userId: string, localPlans: Plan[]) => {
+  const pushPlansToSupabase = async (userId: string, localPlans: Plan[], deletedIds: string[]) => {
     try {
-      const localPlanIds = localPlans.map(p => p.id);
-
-      // 1. Delete plans that are not in localPlanIds
-      if (localPlanIds.length > 0) {
+      // 1. Delete plans that are explicitly marked as deleted
+      if (deletedIds.length > 0) {
         const { error: delErr } = await supabase
           .from("plans")
           .delete()
           .eq("user_id", userId)
-          .not("id", "in", `(${localPlanIds.join(",")})`);
+          .in("id", deletedIds);
         if (delErr) throw delErr;
-      } else {
-        const { error: delErr } = await supabase
-          .from("plans")
-          .delete()
-          .eq("user_id", userId);
-        if (delErr) throw delErr;
+        setDeletedPlanIds(prev => prev.filter(id => !deletedIds.includes(id)));
       }
 
       if (localPlans.length === 0) return;
@@ -363,21 +365,23 @@ export default function AppContainer() {
       const { error: pErr } = await supabase.from("plans").upsert(plansToUpsert);
       if (pErr) throw pErr;
 
-      // 3. Delete workouts not in localWorkoutIds for these plans
-      const localWorkoutIds = localPlans.flatMap(p => p.workouts.map(w => w.id));
-      if (localWorkoutIds.length > 0) {
-        const { error: wDelErr } = await supabase
-          .from("workouts")
-          .delete()
-          .in("plan_id", localPlanIds)
-          .not("id", "in", `(${localWorkoutIds.join(",")})`);
-        if (wDelErr) throw wDelErr;
-      } else {
-        const { error: wDelErr } = await supabase
-          .from("workouts")
-          .delete()
-          .in("plan_id", localPlanIds);
-        if (wDelErr) throw wDelErr;
+      // 3. Delete workouts not in localWorkoutIds within the scope of these plans
+      for (const p of localPlans) {
+        const localWkIds = p.workouts.map(w => w.id);
+        if (localWkIds.length > 0) {
+          const { error: wDelErr } = await supabase
+            .from("workouts")
+            .delete()
+            .eq("plan_id", p.id)
+            .not("id", "in", `(${localWkIds.join(",")})`);
+          if (wDelErr) throw wDelErr;
+        } else {
+          const { error: wDelErr } = await supabase
+            .from("workouts")
+            .delete()
+            .eq("plan_id", p.id);
+          if (wDelErr) throw wDelErr;
+        }
       }
 
       // 4. Upsert remaining workouts
@@ -397,21 +401,24 @@ export default function AppContainer() {
         if (wErr) throw wErr;
       }
 
-      // 5. Delete planned exercises not in localPlannedExerciseIds for these workouts
-      const localPlannedExerciseIds = localPlans.flatMap(p => p.workouts.flatMap(w => w.exercises.map(pe => pe.id)));
-      if (localPlannedExerciseIds.length > 0) {
-        const { error: peDelErr } = await supabase
-          .from("planned_exercises")
-          .delete()
-          .in("workout_id", localWorkoutIds)
-          .not("id", "in", `(${localPlannedExerciseIds.join(",")})`);
-        if (peDelErr) throw peDelErr;
-      } else {
-        const { error: peDelErr } = await supabase
-          .from("planned_exercises")
-          .delete()
-          .in("workout_id", localWorkoutIds);
-        if (peDelErr) throw peDelErr;
+      // 5. Delete planned exercises not in localPlannedExerciseIds within the scope of local workouts
+      const allLocalWorkouts = localPlans.flatMap(p => p.workouts);
+      for (const w of allLocalWorkouts) {
+        const localPeIds = w.exercises.map(pe => pe.id);
+        if (localPeIds.length > 0) {
+          const { error: peDelErr } = await supabase
+            .from("planned_exercises")
+            .delete()
+            .eq("workout_id", w.id)
+            .not("id", "in", `(${localPeIds.join(",")})`);
+          if (peDelErr) throw peDelErr;
+        } else {
+          const { error: peDelErr } = await supabase
+            .from("planned_exercises")
+            .delete()
+            .eq("workout_id", w.id);
+          if (peDelErr) throw peDelErr;
+        }
       }
 
       // 6. Upsert remaining planned exercises
@@ -433,21 +440,24 @@ export default function AppContainer() {
         if (peErr) throw peErr;
       }
 
-      // 7. Delete planned sets not in localPlannedSetIds for these planned exercises
-      const localPlannedSetIds = localPlans.flatMap(p => p.workouts.flatMap(w => w.exercises.flatMap(pe => pe.sets.map(s => s.id))));
-      if (localPlannedSetIds.length > 0) {
-        const { error: psDelErr } = await supabase
-          .from("planned_sets")
-          .delete()
-          .in("planned_exercise_id", localPlannedExerciseIds)
-          .not("id", "in", `(${localPlannedSetIds.join(",")})`);
-        if (psDelErr) throw psDelErr;
-      } else {
-        const { error: psDelErr } = await supabase
-          .from("planned_sets")
-          .delete()
-          .in("planned_exercise_id", localPlannedExerciseIds);
-        if (psDelErr) throw psDelErr;
+      // 7. Delete planned sets not in localPlannedSetIds within the scope of local planned exercises
+      const allLocalPlannedExercises = localPlans.flatMap(p => p.workouts.flatMap(w => w.exercises));
+      for (const pe of allLocalPlannedExercises) {
+        const localPsIds = pe.sets.map(s => s.id);
+        if (localPsIds.length > 0) {
+          const { error: psDelErr } = await supabase
+            .from("planned_sets")
+            .delete()
+            .eq("planned_exercise_id", pe.id)
+            .not("id", "in", `(${localPsIds.join(",")})`);
+          if (psDelErr) throw psDelErr;
+        } else {
+          const { error: psDelErr } = await supabase
+            .from("planned_sets")
+            .delete()
+            .eq("planned_exercise_id", pe.id);
+          if (psDelErr) throw psDelErr;
+        }
       }
 
       // 8. Upsert remaining planned sets
@@ -554,24 +564,17 @@ export default function AppContainer() {
     }
   };
 
-  const pushHistoryToSupabase = async (userId: string, localHistory: HistoryLog[]) => {
+  const pushHistoryToSupabase = async (userId: string, localHistory: HistoryLog[], deletedIds: string[]) => {
     try {
-      const localLogIds = localHistory.map(log => log.id);
-
-      // 1. Delete history logs not in localLogIds
-      if (localLogIds.length > 0) {
+      // 1. Delete history logs that are explicitly marked as deleted
+      if (deletedIds.length > 0) {
         const { error: delErr } = await supabase
           .from("history_logs")
           .delete()
           .eq("user_id", userId)
-          .not("id", "in", `(${localLogIds.join(",")})`);
+          .in("id", deletedIds);
         if (delErr) throw delErr;
-      } else {
-        const { error: delErr } = await supabase
-          .from("history_logs")
-          .delete()
-          .eq("user_id", userId);
-        if (delErr) throw delErr;
+        setDeletedHistoryIds(prev => prev.filter(id => !deletedIds.includes(id)));
       }
 
       if (localHistory.length === 0) return;
@@ -745,12 +748,12 @@ export default function AppContainer() {
     setSyncStatus("syncing");
     try {
       // 1. Exercises
-      await pushCustomExercisesToSupabase(currentUser.id, exercises);
+      await pushCustomExercisesToSupabase(currentUser.id, exercises, deletedExerciseIds);
       const pulledCustom = await pullCustomExercisesFromSupabase(currentUser.id);
       setExercises(prev => {
         const merged = [...prev];
         pulledCustom.forEach(pe => {
-          if (!merged.some(me => me.id === pe.id)) {
+          if (!merged.some(me => me.id === pe.id) && !deletedExerciseIds.includes(pe.id)) {
             merged.push(pe);
           }
         });
@@ -758,7 +761,7 @@ export default function AppContainer() {
       });
 
       // 2. Plans
-      await pushPlansToSupabase(currentUser.id, plans);
+      await pushPlansToSupabase(currentUser.id, plans, deletedPlanIds);
       const pulledPlans = await pullPlansFromSupabase(currentUser.id);
       setPlans(prev => {
         const merged = [...prev];
@@ -766,7 +769,7 @@ export default function AppContainer() {
           const idx = merged.findIndex(mp => mp.id === pp.id);
           if (idx !== -1) {
             merged[idx] = pp;
-          } else {
+          } else if (!deletedPlanIds.includes(pp.id)) {
             merged.push(pp);
           }
         });
@@ -774,12 +777,12 @@ export default function AppContainer() {
       });
 
       // 3. History Logs
-      await pushHistoryToSupabase(currentUser.id, history);
+      await pushHistoryToSupabase(currentUser.id, history, deletedHistoryIds);
       const pulledHistory = await pullHistoryFromSupabase(currentUser.id);
       setHistory(prev => {
         const merged = [...prev];
         pulledHistory.forEach(ph => {
-          if (!merged.some(mh => mh.id === ph.id)) {
+          if (!merged.some(mh => mh.id === ph.id) && !deletedHistoryIds.includes(ph.id)) {
             merged.push(ph);
           }
         });
@@ -870,19 +873,34 @@ export default function AppContainer() {
   // Save states to local storage when changed & sync to Supabase if online
   useEffect(() => {
     if (!isLoaded) return;
+    localStorage.setItem("is_deleted_plans_v1", JSON.stringify(deletedPlanIds));
+  }, [deletedPlanIds, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    localStorage.setItem("is_deleted_exercises_v1", JSON.stringify(deletedExerciseIds));
+  }, [deletedExerciseIds, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    localStorage.setItem("is_deleted_history_v1", JSON.stringify(deletedHistoryIds));
+  }, [deletedHistoryIds, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
     localStorage.setItem("is_exercises_v3", JSON.stringify(exercises));
     if (user) {
-      pushCustomExercisesToSupabase(user.id, exercises);
+      pushCustomExercisesToSupabase(user.id, exercises, deletedExerciseIds);
     }
-  }, [exercises, isLoaded, user]);
+  }, [exercises, isLoaded, user, deletedExerciseIds]);
 
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_plans_v3", JSON.stringify(plans));
     if (user) {
-      pushPlansToSupabase(user.id, plans);
+      pushPlansToSupabase(user.id, plans, deletedPlanIds);
     }
-  }, [plans, isLoaded, user]);
+  }, [plans, isLoaded, user, deletedPlanIds]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -897,9 +915,9 @@ export default function AppContainer() {
     if (!isLoaded) return;
     localStorage.setItem("is_history_v4", JSON.stringify(history));
     if (user) {
-      pushHistoryToSupabase(user.id, history);
+      pushHistoryToSupabase(user.id, history, deletedHistoryIds);
     }
-  }, [history, isLoaded, user]);
+  }, [history, isLoaded, user, deletedHistoryIds]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -1052,6 +1070,12 @@ export default function AppContainer() {
       confirmText: "Excluir",
       onConfirm: () => {
         setExercises(prev => prev.filter(ex => ex.id !== id));
+        if (id.startsWith("ex_")) {
+          setDeletedExerciseIds(prev => {
+            if (prev.includes(id)) return prev;
+            return [...prev, id];
+          });
+        }
       }
     });
   };
@@ -1109,6 +1133,10 @@ export default function AppContainer() {
       confirmText: "Excluir",
       onConfirm: () => {
         setPlans(prev => prev.filter(p => p.id !== planId));
+        setDeletedPlanIds(prev => {
+          if (prev.includes(planId)) return prev;
+          return [...prev, planId];
+        });
         if (activePlanId === planId) {
           setActivePlanId(null);
         }
