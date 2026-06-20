@@ -416,20 +416,22 @@ export default function AppContainer() {
       if (pErr) throw pErr;
 
       // 3. Delete workouts not in localWorkoutIds within the scope of these plans
-      for (const p of localPlans) {
-        const localWkIds = p.workouts.map(w => w.id);
-        if (localWkIds.length > 0) {
+      const localPlanIds = localPlans.map(p => p.id);
+      const allLocalWkIds = localPlans.flatMap(p => p.workouts.map(w => w.id));
+
+      if (localPlanIds.length > 0) {
+        if (allLocalWkIds.length > 0) {
           const { error: wDelErr } = await supabase
             .from("workouts")
             .delete()
-            .eq("plan_id", p.id)
-            .not("id", "in", `(${localWkIds.join(",")})`);
+            .in("plan_id", localPlanIds)
+            .not("id", "in", `(${allLocalWkIds.join(",")})`);
           if (wDelErr) throw wDelErr;
         } else {
           const { error: wDelErr } = await supabase
             .from("workouts")
             .delete()
-            .eq("plan_id", p.id);
+            .in("plan_id", localPlanIds);
           if (wDelErr) throw wDelErr;
         }
       }
@@ -454,20 +456,22 @@ export default function AppContainer() {
 
       // 5. Delete planned exercises not in localPlannedExerciseIds within the scope of local workouts
       const allLocalWorkouts = localPlans.flatMap(p => p.workouts);
-      for (const w of allLocalWorkouts) {
-        const localPeIds = w.exercises.map(pe => pe.id);
-        if (localPeIds.length > 0) {
+      const allLocalWkIdsRef = allLocalWorkouts.map(w => w.id);
+      const allLocalPeIds = allLocalWorkouts.flatMap(w => w.exercises.map(pe => pe.id));
+
+      if (allLocalWkIdsRef.length > 0) {
+        if (allLocalPeIds.length > 0) {
           const { error: peDelErr } = await supabase
             .from("planned_exercises")
             .delete()
-            .eq("workout_id", w.id)
-            .not("id", "in", `(${localPeIds.join(",")})`);
+            .in("workout_id", allLocalWkIdsRef)
+            .not("id", "in", `(${allLocalPeIds.join(",")})`);
           if (peDelErr) throw peDelErr;
         } else {
           const { error: peDelErr } = await supabase
             .from("planned_exercises")
             .delete()
-            .eq("workout_id", w.id);
+            .in("workout_id", allLocalWkIdsRef);
           if (peDelErr) throw peDelErr;
         }
       }
@@ -494,20 +498,22 @@ export default function AppContainer() {
 
       // 7. Delete planned sets not in localPlannedSetIds within the scope of local planned exercises
       const allLocalPlannedExercises = localPlans.flatMap(p => p.workouts.flatMap(w => w.exercises));
-      for (const pe of allLocalPlannedExercises) {
-        const localPsIds = pe.sets.map(s => s.id);
-        if (localPsIds.length > 0) {
+      const allLocalPeIdsRef = allLocalPlannedExercises.map(pe => pe.id);
+      const allLocalPsIds = allLocalPlannedExercises.flatMap(pe => pe.sets.map(s => s.id));
+
+      if (allLocalPeIdsRef.length > 0) {
+        if (allLocalPsIds.length > 0) {
           const { error: psDelErr } = await supabase
             .from("planned_sets")
             .delete()
-            .eq("planned_exercise_id", pe.id)
-            .not("id", "in", `(${localPsIds.join(",")})`);
+            .in("planned_exercise_id", allLocalPeIdsRef)
+            .not("id", "in", `(${allLocalPsIds.join(",")})`);
           if (psDelErr) throw psDelErr;
         } else {
           const { error: psDelErr } = await supabase
             .from("planned_sets")
             .delete()
-            .eq("planned_exercise_id", pe.id);
+            .in("planned_exercise_id", allLocalPeIdsRef);
           if (psDelErr) throw psDelErr;
         }
       }
