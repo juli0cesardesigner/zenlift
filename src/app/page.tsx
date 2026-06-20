@@ -2,14 +2,12 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { 
-  Play, 
   CheckSquare, 
   Square, 
   Plus, 
   Trash2, 
   History, 
   Dumbbell, 
-  StopCircle, 
   Clock, 
   ArrowLeft, 
   Copy, 
@@ -23,8 +21,7 @@ import {
   Cloud,
   CloudOff,
   RefreshCw,
-  Database,
-  User as UserIcon
+  Database
 } from "lucide-react";
 import { supabase } from "./supabase";
 import { User as SupabaseUser } from "@supabase/supabase-js";
