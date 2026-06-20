@@ -22,7 +22,8 @@ import {
   Cloud,
   CloudOff,
   RefreshCw,
-  Database
+  Database,
+  FileText
 } from "lucide-react";
 import { supabase } from "./supabase";
 import { User as SupabaseUser } from "@supabase/supabase-js";
@@ -222,6 +223,8 @@ export default function AppContainer() {
   const [editingExerciseThumbnailFile, setEditingExerciseThumbnailFile] = useState<File | null>(null);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importText, setImportText] = useState("");
   const [isMuscleDropdownOpen, setIsMuscleDropdownOpen] = useState(false);
 
   // Custom dialog/alert state
@@ -1390,6 +1393,55 @@ export default function AppContainer() {
     setNewExerciseName("");
   };
 
+  const handleImportExercises = () => {
+    if (!importText.trim()) return;
+    const lines = importText.split('\n');
+    const parsedExs: ExerciseDef[] = [];
+    
+    // Check if the first line is likely a header. If so, skip it.
+    let startIndex = 0;
+    if (lines.length > 0) {
+      const firstLineLower = lines[0].toLowerCase();
+      if (firstLineLower.includes("nome") && firstLineLower.includes("músculo") || firstLineLower.includes("musculo")) {
+        startIndex = 1;
+      }
+    }
+
+    for (let i = startIndex; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      
+      const cols = line.split('\t');
+      // Esperado: Nome | Musculo | Equipamento | Dificuldade | Categoria | Mecânica | Secundários
+      if (cols.length >= 2) {
+        const name = cols[0]?.trim();
+        const muscle = cols[1]?.trim() || "Geral";
+        if (name) {
+          const newEx: ExerciseDef = {
+            id: `ex_${crypto.randomUUID()}`,
+            name: name,
+            muscle: muscle,
+            equipment: cols[2]?.trim() || undefined,
+            difficultyLevel: cols[3]?.trim() || undefined,
+            exerciseCategory: cols[4]?.trim() || undefined,
+            mechanicType: cols[5]?.trim() || undefined,
+            secondaryMuscles: cols[6] ? cols[6].split(',').map(s => s.trim()).filter(Boolean) : [],
+          };
+          parsedExs.push(newEx);
+        }
+      }
+    }
+
+    if (parsedExs.length > 0) {
+      setExercises(prev => [...prev, ...parsedExs]);
+      setImportText("");
+      setIsImportModalOpen(false);
+      alert(`${parsedExs.length} exercícios importados com sucesso!`);
+    } else {
+      alert("Nenhum exercício válido foi encontrado. Verifique o formato e tente novamente.");
+    }
+  };
+
   const toggleVisibleField = (field: string, checked: boolean) => {
     if (!editingExercise) return;
     const current = editingExercise.visibleFields || [];
@@ -2109,6 +2161,59 @@ export default function AppContainer() {
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden bg-noturno text-white">
       
+      {/* -------------------- IMPORT MODAL -------------------- */}
+      {isImportModalOpen && (
+        <div className="absolute inset-0 z-50 bg-noturno flex flex-col overflow-hidden animate-fade-in">
+          {/* Header */}
+          <div className="flex-none p-6 pb-4 border-b border-concrete/20 flex justify-between items-center bg-noturno z-10 shadow-md">
+            <div>
+              <span className="font-mono text-[10px] text-concrete uppercase tracking-widest">Ação em Lote</span>
+              <h2 className="font-display text-3xl uppercase text-white leading-none mt-1">Importar (Planilha)</h2>
+            </div>
+            <button 
+              onClick={() => {
+                setIsImportModalOpen(false);
+                setImportText("");
+              }} 
+              className="text-concrete hover:text-white transition-colors p-2"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+            <div className="bg-concrete/10 border border-concrete/20 rounded-xl p-4">
+              <h3 className="font-mono text-xs uppercase text-white font-bold mb-2">Instruções:</h3>
+              <p className="font-mono text-[10px] text-concrete mb-3 leading-relaxed">
+                Copie a tabela do seu Excel ou Google Sheets contendo seus exercícios e cole na caixa abaixo.
+              </p>
+              <p className="font-mono text-[10px] text-white font-bold mb-1">A ordem das colunas esperada é:</p>
+              <div className="bg-noturno p-2 rounded border border-concrete/10 overflow-x-auto whitespace-nowrap">
+                <code className="font-mono text-[9px] text-concrete">
+                  NOME | MUSCULO | EQUIPAMENTO | DIFICULDADE | CATEGORIA | MECÂNICA | SECUNDÁRIOS
+                </code>
+              </div>
+            </div>
+
+            <textarea
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder="Cole os dados da planilha aqui (Ctrl+V)..."
+              className="flex-1 min-h-[300px] bg-concrete/5 border border-concrete/20 rounded-xl p-4 font-mono text-[10px] text-white focus:outline-none focus:border-vulcanico transition-colors resize-none whitespace-pre"
+            />
+          </div>
+
+          <div className="flex-none p-6 bg-noturno border-t border-concrete/20">
+            <button 
+              onClick={handleImportExercises}
+              disabled={!importText.trim()}
+              className="w-full bg-vulcanico hover:bg-white text-noturno font-display text-xl uppercase py-4 rounded-xl font-bold transition-all disabled:opacity-50"
+            >
+              Processar e Importar
+            </button>
+          </div>
+        </div>
+      )}
       {/* -------------------- EDIT EXERCISE MODAL -------------------- */}
       {editingExercise && (
         <div className="absolute inset-0 z-50 bg-noturno flex flex-col overflow-hidden animate-fade-in">
@@ -3508,9 +3613,17 @@ export default function AppContainer() {
         {/* TAB: BIBLIOTECA EXERCICIOS */}
         {activeTab === "exercises" && (
           <div className="p-6 flex flex-col min-h-full">
-            <div className="flex justify-between items-end mb-8">
-              <h1 className="font-display text-4xl uppercase text-white tracking-tighter mb-8 leading-none">Exercícios</h1>
-              {renderSyncButton()}
+            <div className="flex justify-between items-start mb-8">
+              <h1 className="font-display text-4xl uppercase text-white tracking-tighter leading-none">Exercícios</h1>
+              <div className="flex flex-col items-end gap-3">
+                {renderSyncButton()}
+                <button
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="flex items-center gap-1.5 font-mono text-[9px] uppercase bg-concrete/10 border border-concrete/20 px-2 py-1.5 rounded text-white hover:bg-concrete/20 transition-colors"
+                >
+                  <FileText size={12} /> Importar (Planilha)
+                </button>
+              </div>
             </div>
 
             {/* Form */}
