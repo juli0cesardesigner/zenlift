@@ -234,10 +234,13 @@ export default function AppContainer() {
   const [deletedExerciseIds, setDeletedExerciseIds] = useState<string[]>([]);
   const [deletedHistoryIds, setDeletedHistoryIds] = useState<string[]>([]);
 
-  // Synced tracking states (prevent resurrection of deleted items)
-  const [syncedPlanIds, setSyncedPlanIds] = useState<string[]>([]);
-  const [syncedExerciseIds, setSyncedExerciseIds] = useState<string[]>([]);
-  const [syncedHistoryIds, setSyncedHistoryIds] = useState<string[]>([]);
+  // Synced tracking refs (prevent resurrection of deleted items - useRef to avoid re-renders)
+  const syncedPlanIdsRef = useRef<string[]>([]);
+  const syncedExerciseIdsRef = useRef<string[]>([]);
+  const syncedHistoryIdsRef = useRef<string[]>([]);
+
+  // Flag to suppress push-backs when state changes originate from Realtime events
+  const isSyncingFromRemoteRef = useRef(false);
 
   // Load state from local storage on mount
   useEffect(() => {
@@ -280,13 +283,13 @@ export default function AppContainer() {
     if (storedDeletedHistory) setDeletedHistoryIds(JSON.parse(storedDeletedHistory));
 
     const storedSyncedPlans = localStorage.getItem("is_synced_plans_v1");
-    if (storedSyncedPlans) setSyncedPlanIds(JSON.parse(storedSyncedPlans));
+    if (storedSyncedPlans) syncedPlanIdsRef.current = JSON.parse(storedSyncedPlans);
 
     const storedSyncedExercises = localStorage.getItem("is_synced_exercises_v1");
-    if (storedSyncedExercises) setSyncedExerciseIds(JSON.parse(storedSyncedExercises));
+    if (storedSyncedExercises) syncedExerciseIdsRef.current = JSON.parse(storedSyncedExercises);
 
     const storedSyncedHistory = localStorage.getItem("is_synced_history_v1");
-    if (storedSyncedHistory) setSyncedHistoryIds(JSON.parse(storedSyncedHistory));
+    if (storedSyncedHistory) syncedHistoryIdsRef.current = JSON.parse(storedSyncedHistory);
 
     setIsLoaded(true);
   }, []);
@@ -332,13 +335,12 @@ export default function AppContainer() {
       if (upErr) throw upErr;
 
       const upsertedIds = customLocal.map(ex => ex.id);
-      setSyncedExerciseIds(prev => {
-        const next = [...prev];
-        upsertedIds.forEach(id => {
-          if (!next.includes(id)) next.push(id);
-        });
-        return next;
+      const next = [...syncedExerciseIdsRef.current];
+      upsertedIds.forEach(id => {
+        if (!next.includes(id)) next.push(id);
       });
+      syncedExerciseIdsRef.current = next;
+      localStorage.setItem("is_synced_exercises_v1", JSON.stringify(next));
     } catch (e) {
       console.error("pushCustomExercisesToSupabase error:", e);
     }
@@ -518,13 +520,12 @@ export default function AppContainer() {
       }
 
       const upsertedIds = localPlans.map(p => p.id);
-      setSyncedPlanIds(prev => {
-        const next = [...prev];
-        upsertedIds.forEach(id => {
-          if (!next.includes(id)) next.push(id);
-        });
-        return next;
+      const next = [...syncedPlanIdsRef.current];
+      upsertedIds.forEach(id => {
+        if (!next.includes(id)) next.push(id);
       });
+      syncedPlanIdsRef.current = next;
+      localStorage.setItem("is_synced_plans_v1", JSON.stringify(next));
     } catch (e) {
       console.error("pushPlansToSupabase error:", e);
     }
@@ -678,13 +679,12 @@ export default function AppContainer() {
       }
 
       const upsertedIds = localHistory.map(log => log.id);
-      setSyncedHistoryIds(prev => {
-        const next = [...prev];
-        upsertedIds.forEach(id => {
-          if (!next.includes(id)) next.push(id);
-        });
-        return next;
+      const next = [...syncedHistoryIdsRef.current];
+      upsertedIds.forEach(id => {
+        if (!next.includes(id)) next.push(id);
       });
+      syncedHistoryIdsRef.current = next;
+      localStorage.setItem("is_synced_history_v1", JSON.stringify(next));
     } catch (e) {
       console.error("pushHistoryToSupabase error:", e);
     }
@@ -798,7 +798,7 @@ export default function AppContainer() {
         const pulledIds = pulledCustom.map(pe => pe.id);
         const filteredPrev = prev.filter(ex => {
           if (!ex.id.startsWith("ex_")) return true;
-          const wasSynced = syncedExerciseIds.includes(ex.id);
+          const wasSynced = syncedExerciseIdsRef.current.includes(ex.id);
           const isPulled = pulledIds.includes(ex.id);
           if (wasSynced && !isPulled) return false;
           return true;
@@ -812,7 +812,8 @@ export default function AppContainer() {
         });
 
         const newSyncedIds = merged.filter(ex => ex.id.startsWith("ex_") && pulledIds.includes(ex.id)).map(ex => ex.id);
-        setSyncedExerciseIds(newSyncedIds);
+        syncedExerciseIdsRef.current = newSyncedIds;
+        localStorage.setItem("is_synced_exercises_v1", JSON.stringify(newSyncedIds));
         return merged;
       });
 
@@ -822,7 +823,7 @@ export default function AppContainer() {
       setPlans(prev => {
         const pulledIds = pulledPlans.map(pp => pp.id);
         const filteredPrev = prev.filter(p => {
-          const wasSynced = syncedPlanIds.includes(p.id);
+          const wasSynced = syncedPlanIdsRef.current.includes(p.id);
           const isPulled = pulledIds.includes(p.id);
           if (wasSynced && !isPulled) return false;
           return true;
@@ -839,7 +840,8 @@ export default function AppContainer() {
         });
 
         const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
-        setSyncedPlanIds(newSyncedIds);
+        syncedPlanIdsRef.current = newSyncedIds;
+        localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
         return merged;
       });
 
@@ -849,7 +851,7 @@ export default function AppContainer() {
       setHistory(prev => {
         const pulledIds = pulledHistory.map(ph => ph.id);
         const filteredPrev = prev.filter(log => {
-          const wasSynced = syncedHistoryIds.includes(log.id);
+          const wasSynced = syncedHistoryIdsRef.current.includes(log.id);
           const isPulled = pulledIds.includes(log.id);
           if (wasSynced && !isPulled) return false;
           return true;
@@ -863,7 +865,8 @@ export default function AppContainer() {
         });
 
         const newSyncedIds = merged.filter(log => pulledIds.includes(log.id)).map(log => log.id);
-        setSyncedHistoryIds(newSyncedIds);
+        syncedHistoryIdsRef.current = newSyncedIds;
+        localStorage.setItem("is_synced_history_v1", JSON.stringify(newSyncedIds));
         return merged.sort((a, b) => b.date - a.date);
       });
 
@@ -907,11 +910,12 @@ export default function AppContainer() {
         { event: "*", schema: "public", table: "plans" },
         async (payload: any) => {
           console.log("Realtime plan change:", payload);
+          isSyncingFromRemoteRef.current = true;
           const pulledPlans = await pullPlansFromSupabase(user.id);
           setPlans(prev => {
             const pulledIds = pulledPlans.map(pp => pp.id);
             const filteredPrev = prev.filter(p => {
-              const wasSynced = syncedPlanIds.includes(p.id);
+              const wasSynced = syncedPlanIdsRef.current.includes(p.id);
               const isPulled = pulledIds.includes(p.id);
               if (wasSynced && !isPulled) return false;
               return true;
@@ -934,9 +938,11 @@ export default function AppContainer() {
             }
 
             const newSyncedIds = finalPlans.filter(p => pulledIds.includes(p.id)).map(p => p.id);
-            setSyncedPlanIds(newSyncedIds);
+            syncedPlanIdsRef.current = newSyncedIds;
+            localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
             return finalPlans;
           });
+          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
         }
       )
       // Listen to workouts changes
@@ -944,11 +950,12 @@ export default function AppContainer() {
         "postgres_changes",
         { event: "*", schema: "public", table: "workouts" },
         async () => {
+          isSyncingFromRemoteRef.current = true;
           const pulledPlans = await pullPlansFromSupabase(user.id);
           setPlans(prev => {
             const pulledIds = pulledPlans.map(pp => pp.id);
             const filteredPrev = prev.filter(p => {
-              const wasSynced = syncedPlanIds.includes(p.id);
+              const wasSynced = syncedPlanIdsRef.current.includes(p.id);
               const isPulled = pulledIds.includes(p.id);
               if (wasSynced && !isPulled) return false;
               return true;
@@ -965,9 +972,11 @@ export default function AppContainer() {
             });
 
             const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
-            setSyncedPlanIds(newSyncedIds);
+            syncedPlanIdsRef.current = newSyncedIds;
+            localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
             return merged;
           });
+          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
         }
       )
       // Listen to planned_exercises changes
@@ -975,11 +984,12 @@ export default function AppContainer() {
         "postgres_changes",
         { event: "*", schema: "public", table: "planned_exercises" },
         async () => {
+          isSyncingFromRemoteRef.current = true;
           const pulledPlans = await pullPlansFromSupabase(user.id);
           setPlans(prev => {
             const pulledIds = pulledPlans.map(pp => pp.id);
             const filteredPrev = prev.filter(p => {
-              const wasSynced = syncedPlanIds.includes(p.id);
+              const wasSynced = syncedPlanIdsRef.current.includes(p.id);
               const isPulled = pulledIds.includes(p.id);
               if (wasSynced && !isPulled) return false;
               return true;
@@ -996,9 +1006,11 @@ export default function AppContainer() {
             });
 
             const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
-            setSyncedPlanIds(newSyncedIds);
+            syncedPlanIdsRef.current = newSyncedIds;
+            localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
             return merged;
           });
+          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
         }
       )
       // Listen to planned_sets changes
@@ -1006,11 +1018,12 @@ export default function AppContainer() {
         "postgres_changes",
         { event: "*", schema: "public", table: "planned_sets" },
         async () => {
+          isSyncingFromRemoteRef.current = true;
           const pulledPlans = await pullPlansFromSupabase(user.id);
           setPlans(prev => {
             const pulledIds = pulledPlans.map(pp => pp.id);
             const filteredPrev = prev.filter(p => {
-              const wasSynced = syncedPlanIds.includes(p.id);
+              const wasSynced = syncedPlanIdsRef.current.includes(p.id);
               const isPulled = pulledIds.includes(p.id);
               if (wasSynced && !isPulled) return false;
               return true;
@@ -1027,9 +1040,11 @@ export default function AppContainer() {
             });
 
             const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
-            setSyncedPlanIds(newSyncedIds);
+            syncedPlanIdsRef.current = newSyncedIds;
+            localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
             return merged;
           });
+          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
         }
       )
       // Listen to custom exercises changes
@@ -1038,12 +1053,13 @@ export default function AppContainer() {
         { event: "*", schema: "public", table: "exercises" },
         async (payload: any) => {
           console.log("Realtime exercise change:", payload);
+          isSyncingFromRemoteRef.current = true;
           const pulledCustom = await pullCustomExercisesFromSupabase(user.id);
           setExercises(prev => {
             const pulledIds = pulledCustom.map(pe => pe.id);
             const filteredPrev = prev.filter(ex => {
               if (!ex.id.startsWith("ex_")) return true;
-              const wasSynced = syncedExerciseIds.includes(ex.id);
+              const wasSynced = syncedExerciseIdsRef.current.includes(ex.id);
               const isPulled = pulledIds.includes(ex.id);
               if (wasSynced && !isPulled) return false;
               return true;
@@ -1063,9 +1079,11 @@ export default function AppContainer() {
             }
 
             const newSyncedIds = finalExercises.filter(ex => ex.id.startsWith("ex_") && pulledIds.includes(ex.id)).map(ex => ex.id);
-            setSyncedExerciseIds(newSyncedIds);
+            syncedExerciseIdsRef.current = newSyncedIds;
+            localStorage.setItem("is_synced_exercises_v1", JSON.stringify(newSyncedIds));
             return finalExercises;
           });
+          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
         }
       )
       // Listen to history changes
@@ -1074,11 +1092,12 @@ export default function AppContainer() {
         { event: "*", schema: "public", table: "history_logs" },
         async (payload: any) => {
           console.log("Realtime history change:", payload);
+          isSyncingFromRemoteRef.current = true;
           const pulledHistory = await pullHistoryFromSupabase(user.id);
           setHistory(prev => {
             const pulledIds = pulledHistory.map(ph => ph.id);
             const filteredPrev = prev.filter(log => {
-              const wasSynced = syncedHistoryIds.includes(log.id);
+              const wasSynced = syncedHistoryIdsRef.current.includes(log.id);
               const isPulled = pulledIds.includes(log.id);
               if (wasSynced && !isPulled) return false;
               return true;
@@ -1098,9 +1117,11 @@ export default function AppContainer() {
             }
 
             const newSyncedIds = finalHistory.filter(log => pulledIds.includes(log.id)).map(log => log.id);
-            setSyncedHistoryIds(newSyncedIds);
+            syncedHistoryIdsRef.current = newSyncedIds;
+            localStorage.setItem("is_synced_history_v1", JSON.stringify(newSyncedIds));
             return finalHistory.sort((a, b) => b.date - a.date);
           });
+          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
         }
       )
       // Listen to focused exercises changes
@@ -1108,6 +1129,7 @@ export default function AppContainer() {
         "postgres_changes",
         { event: "*", schema: "public", table: "focused_exercises" },
         async () => {
+          isSyncingFromRemoteRef.current = true;
           const pulledFocus = await pullFocusedExercisesFromSupabase(user.id);
           setFocusedExercises(prev => {
             const merged = [...prev];
@@ -1118,6 +1140,7 @@ export default function AppContainer() {
             });
             return merged;
           });
+          setTimeout(() => { isSyncingFromRemoteRef.current = false; }, 500);
         }
       )
       .subscribe();
@@ -1125,7 +1148,7 @@ export default function AppContainer() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, isLoaded, deletedPlanIds, deletedExerciseIds, deletedHistoryIds, syncedPlanIds, syncedExerciseIds, syncedHistoryIds]);
+  }, [user, isLoaded, deletedPlanIds, deletedExerciseIds, deletedHistoryIds]);
 
   // Auth Handlers
   const handleAuthAction = async () => {
@@ -1198,23 +1221,8 @@ export default function AppContainer() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("is_synced_plans_v1", JSON.stringify(syncedPlanIds));
-  }, [syncedPlanIds, isLoaded]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem("is_synced_exercises_v1", JSON.stringify(syncedExerciseIds));
-  }, [syncedExerciseIds, isLoaded]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem("is_synced_history_v1", JSON.stringify(syncedHistoryIds));
-  }, [syncedHistoryIds, isLoaded]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
     localStorage.setItem("is_exercises_v3", JSON.stringify(exercises));
-    if (user) {
+    if (user && !isSyncingFromRemoteRef.current) {
       pushCustomExercisesToSupabase(user.id, exercises, deletedExerciseIds);
     }
   }, [exercises, isLoaded, user, deletedExerciseIds]);
@@ -1222,7 +1230,7 @@ export default function AppContainer() {
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_plans_v3", JSON.stringify(plans));
-    if (user) {
+    if (user && !isSyncingFromRemoteRef.current) {
       pushPlansToSupabase(user.id, plans, deletedPlanIds);
     }
   }, [plans, isLoaded, user, deletedPlanIds]);
@@ -1239,7 +1247,7 @@ export default function AppContainer() {
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_history_v4", JSON.stringify(history));
-    if (user) {
+    if (user && !isSyncingFromRemoteRef.current) {
       pushHistoryToSupabase(user.id, history, deletedHistoryIds);
     }
   }, [history, isLoaded, user, deletedHistoryIds]);
