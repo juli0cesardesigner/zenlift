@@ -392,7 +392,8 @@ export default function AppContainer() {
             id: w.id,
             plan_id: p.id,
             name: w.name,
-            order_index: wIdx
+            order_index: wIdx,
+            user_id: userId
           });
         });
       });
@@ -430,7 +431,8 @@ export default function AppContainer() {
               id: pe.id,
               workout_id: w.id,
               exercise_id: pe.exerciseId,
-              order_index: peIdx
+              order_index: peIdx,
+              user_id: userId
             });
           });
         });
@@ -480,7 +482,8 @@ export default function AppContainer() {
                 rest_pause_sets: s.restPauseSets || null,
                 rest_pause_seconds: s.restPauseSeconds || null,
                 failure_type: s.failureType || null,
-                order_index: sIdx
+                order_index: sIdx,
+                user_id: userId
               });
             });
           });
