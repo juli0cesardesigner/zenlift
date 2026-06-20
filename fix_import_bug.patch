@@ -1,0 +1,11 @@
+--- src/app/page.tsx
++++ src/app/page.tsx
+@@ -1477,7 +1477,7 @@
+       }
+
+       // Temporary local map to avoid creating duplicates and mapping names
+-      const localExerciseMap: Record<string, string> = { ...Object.fromEntries(Object.values(exerciseMapByName).map(ex => [ex.name.toLowerCase().trim(), ex.id])) };
++      const localExerciseMap: Record<string, string> = { ...Object.fromEntries(Object.values(exerciseMap).map(ex => [ex.name.toLowerCase().trim(), ex.id])) };
+       const newExercisesToCreate: ExerciseDef[] = [];
+
+       for (let i = startIndex; i < lines.length; i++) {
