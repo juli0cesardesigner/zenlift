@@ -234,6 +234,11 @@ export default function AppContainer() {
   const [deletedExerciseIds, setDeletedExerciseIds] = useState<string[]>([]);
   const [deletedHistoryIds, setDeletedHistoryIds] = useState<string[]>([]);
 
+  // Synced tracking states (prevent resurrection of deleted items)
+  const [syncedPlanIds, setSyncedPlanIds] = useState<string[]>([]);
+  const [syncedExerciseIds, setSyncedExerciseIds] = useState<string[]>([]);
+  const [syncedHistoryIds, setSyncedHistoryIds] = useState<string[]>([]);
+
   // Load state from local storage on mount
   useEffect(() => {
     const storedEx = localStorage.getItem("is_exercises_v3");
@@ -273,6 +278,15 @@ export default function AppContainer() {
 
     const storedDeletedHistory = localStorage.getItem("is_deleted_history_v1");
     if (storedDeletedHistory) setDeletedHistoryIds(JSON.parse(storedDeletedHistory));
+
+    const storedSyncedPlans = localStorage.getItem("is_synced_plans_v1");
+    if (storedSyncedPlans) setSyncedPlanIds(JSON.parse(storedSyncedPlans));
+
+    const storedSyncedExercises = localStorage.getItem("is_synced_exercises_v1");
+    if (storedSyncedExercises) setSyncedExerciseIds(JSON.parse(storedSyncedExercises));
+
+    const storedSyncedHistory = localStorage.getItem("is_synced_history_v1");
+    if (storedSyncedHistory) setSyncedHistoryIds(JSON.parse(storedSyncedHistory));
 
     setIsLoaded(true);
   }, []);
@@ -316,6 +330,15 @@ export default function AppContainer() {
       }));
       const { error: upErr } = await supabase.from("exercises").upsert(toUpsert);
       if (upErr) throw upErr;
+
+      const upsertedIds = customLocal.map(ex => ex.id);
+      setSyncedExerciseIds(prev => {
+        const next = [...prev];
+        upsertedIds.forEach(id => {
+          if (!next.includes(id)) next.push(id);
+        });
+        return next;
+      });
     } catch (e) {
       console.error("pushCustomExercisesToSupabase error:", e);
     }
@@ -493,6 +516,15 @@ export default function AppContainer() {
         const { error: psErr } = await supabase.from("planned_sets").upsert(psToUpsert);
         if (psErr) throw psErr;
       }
+
+      const upsertedIds = localPlans.map(p => p.id);
+      setSyncedPlanIds(prev => {
+        const next = [...prev];
+        upsertedIds.forEach(id => {
+          if (!next.includes(id)) next.push(id);
+        });
+        return next;
+      });
     } catch (e) {
       console.error("pushPlansToSupabase error:", e);
     }
@@ -644,6 +676,15 @@ export default function AppContainer() {
         const { error: sErr } = await supabase.from("history_log_sets").upsert(setsToUpsert);
         if (sErr) throw sErr;
       }
+
+      const upsertedIds = localHistory.map(log => log.id);
+      setSyncedHistoryIds(prev => {
+        const next = [...prev];
+        upsertedIds.forEach(id => {
+          if (!next.includes(id)) next.push(id);
+        });
+        return next;
+      });
     } catch (e) {
       console.error("pushHistoryToSupabase error:", e);
     }
@@ -754,12 +795,24 @@ export default function AppContainer() {
       await pushCustomExercisesToSupabase(currentUser.id, exercises, deletedExerciseIds);
       const pulledCustom = await pullCustomExercisesFromSupabase(currentUser.id);
       setExercises(prev => {
-        const merged = [...prev];
+        const pulledIds = pulledCustom.map(pe => pe.id);
+        const filteredPrev = prev.filter(ex => {
+          if (!ex.id.startsWith("ex_")) return true;
+          const wasSynced = syncedExerciseIds.includes(ex.id);
+          const isPulled = pulledIds.includes(ex.id);
+          if (wasSynced && !isPulled) return false;
+          return true;
+        });
+
+        const merged = [...filteredPrev];
         pulledCustom.forEach(pe => {
           if (!merged.some(me => me.id === pe.id) && !deletedExerciseIds.includes(pe.id)) {
             merged.push(pe);
           }
         });
+
+        const newSyncedIds = merged.filter(ex => ex.id.startsWith("ex_") && pulledIds.includes(ex.id)).map(ex => ex.id);
+        setSyncedExerciseIds(newSyncedIds);
         return merged;
       });
 
@@ -767,7 +820,15 @@ export default function AppContainer() {
       await pushPlansToSupabase(currentUser.id, plans, deletedPlanIds);
       const pulledPlans = await pullPlansFromSupabase(currentUser.id);
       setPlans(prev => {
-        const merged = [...prev];
+        const pulledIds = pulledPlans.map(pp => pp.id);
+        const filteredPrev = prev.filter(p => {
+          const wasSynced = syncedPlanIds.includes(p.id);
+          const isPulled = pulledIds.includes(p.id);
+          if (wasSynced && !isPulled) return false;
+          return true;
+        });
+
+        const merged = [...filteredPrev];
         pulledPlans.forEach(pp => {
           const idx = merged.findIndex(mp => mp.id === pp.id);
           if (idx !== -1) {
@@ -776,6 +837,9 @@ export default function AppContainer() {
             merged.push(pp);
           }
         });
+
+        const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
+        setSyncedPlanIds(newSyncedIds);
         return merged;
       });
 
@@ -783,12 +847,23 @@ export default function AppContainer() {
       await pushHistoryToSupabase(currentUser.id, history, deletedHistoryIds);
       const pulledHistory = await pullHistoryFromSupabase(currentUser.id);
       setHistory(prev => {
-        const merged = [...prev];
+        const pulledIds = pulledHistory.map(ph => ph.id);
+        const filteredPrev = prev.filter(log => {
+          const wasSynced = syncedHistoryIds.includes(log.id);
+          const isPulled = pulledIds.includes(log.id);
+          if (wasSynced && !isPulled) return false;
+          return true;
+        });
+
+        const merged = [...filteredPrev];
         pulledHistory.forEach(ph => {
           if (!merged.some(mh => mh.id === ph.id) && !deletedHistoryIds.includes(ph.id)) {
             merged.push(ph);
           }
         });
+
+        const newSyncedIds = merged.filter(log => pulledIds.includes(log.id)).map(log => log.id);
+        setSyncedHistoryIds(newSyncedIds);
         return merged.sort((a, b) => b.date - a.date);
       });
 
@@ -834,7 +909,15 @@ export default function AppContainer() {
           console.log("Realtime plan change:", payload);
           const pulledPlans = await pullPlansFromSupabase(user.id);
           setPlans(prev => {
-            const merged = [...prev];
+            const pulledIds = pulledPlans.map(pp => pp.id);
+            const filteredPrev = prev.filter(p => {
+              const wasSynced = syncedPlanIds.includes(p.id);
+              const isPulled = pulledIds.includes(p.id);
+              if (wasSynced && !isPulled) return false;
+              return true;
+            });
+
+            const merged = [...filteredPrev];
             pulledPlans.forEach(pp => {
               const idx = merged.findIndex(mp => mp.id === pp.id);
               if (idx !== -1) {
@@ -843,11 +926,16 @@ export default function AppContainer() {
                 merged.push(pp);
               }
             });
+
+            let finalPlans = merged;
             if (payload.eventType === "DELETE") {
               const deletedId = payload.old.id;
-              return merged.filter(mp => mp.id !== deletedId);
+              finalPlans = merged.filter(mp => mp.id !== deletedId);
             }
-            return merged;
+
+            const newSyncedIds = finalPlans.filter(p => pulledIds.includes(p.id)).map(p => p.id);
+            setSyncedPlanIds(newSyncedIds);
+            return finalPlans;
           });
         }
       )
@@ -858,7 +946,15 @@ export default function AppContainer() {
         async () => {
           const pulledPlans = await pullPlansFromSupabase(user.id);
           setPlans(prev => {
-            const merged = [...prev];
+            const pulledIds = pulledPlans.map(pp => pp.id);
+            const filteredPrev = prev.filter(p => {
+              const wasSynced = syncedPlanIds.includes(p.id);
+              const isPulled = pulledIds.includes(p.id);
+              if (wasSynced && !isPulled) return false;
+              return true;
+            });
+
+            const merged = [...filteredPrev];
             pulledPlans.forEach(pp => {
               const idx = merged.findIndex(mp => mp.id === pp.id);
               if (idx !== -1) {
@@ -867,6 +963,9 @@ export default function AppContainer() {
                 merged.push(pp);
               }
             });
+
+            const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
+            setSyncedPlanIds(newSyncedIds);
             return merged;
           });
         }
@@ -878,7 +977,15 @@ export default function AppContainer() {
         async () => {
           const pulledPlans = await pullPlansFromSupabase(user.id);
           setPlans(prev => {
-            const merged = [...prev];
+            const pulledIds = pulledPlans.map(pp => pp.id);
+            const filteredPrev = prev.filter(p => {
+              const wasSynced = syncedPlanIds.includes(p.id);
+              const isPulled = pulledIds.includes(p.id);
+              if (wasSynced && !isPulled) return false;
+              return true;
+            });
+
+            const merged = [...filteredPrev];
             pulledPlans.forEach(pp => {
               const idx = merged.findIndex(mp => mp.id === pp.id);
               if (idx !== -1) {
@@ -887,6 +994,9 @@ export default function AppContainer() {
                 merged.push(pp);
               }
             });
+
+            const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
+            setSyncedPlanIds(newSyncedIds);
             return merged;
           });
         }
@@ -898,7 +1008,15 @@ export default function AppContainer() {
         async () => {
           const pulledPlans = await pullPlansFromSupabase(user.id);
           setPlans(prev => {
-            const merged = [...prev];
+            const pulledIds = pulledPlans.map(pp => pp.id);
+            const filteredPrev = prev.filter(p => {
+              const wasSynced = syncedPlanIds.includes(p.id);
+              const isPulled = pulledIds.includes(p.id);
+              if (wasSynced && !isPulled) return false;
+              return true;
+            });
+
+            const merged = [...filteredPrev];
             pulledPlans.forEach(pp => {
               const idx = merged.findIndex(mp => mp.id === pp.id);
               if (idx !== -1) {
@@ -907,6 +1025,9 @@ export default function AppContainer() {
                 merged.push(pp);
               }
             });
+
+            const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
+            setSyncedPlanIds(newSyncedIds);
             return merged;
           });
         }
@@ -919,17 +1040,31 @@ export default function AppContainer() {
           console.log("Realtime exercise change:", payload);
           const pulledCustom = await pullCustomExercisesFromSupabase(user.id);
           setExercises(prev => {
-            const merged = [...prev];
+            const pulledIds = pulledCustom.map(pe => pe.id);
+            const filteredPrev = prev.filter(ex => {
+              if (!ex.id.startsWith("ex_")) return true;
+              const wasSynced = syncedExerciseIds.includes(ex.id);
+              const isPulled = pulledIds.includes(ex.id);
+              if (wasSynced && !isPulled) return false;
+              return true;
+            });
+
+            const merged = [...filteredPrev];
             pulledCustom.forEach(pe => {
               if (!merged.some(me => me.id === pe.id) && !deletedExerciseIds.includes(pe.id)) {
                 merged.push(pe);
               }
             });
+
+            let finalExercises = merged;
             if (payload.eventType === "DELETE") {
               const deletedId = payload.old.id;
-              return merged.filter(me => me.id !== deletedId);
+              finalExercises = merged.filter(me => me.id !== deletedId);
             }
-            return merged;
+
+            const newSyncedIds = finalExercises.filter(ex => ex.id.startsWith("ex_") && pulledIds.includes(ex.id)).map(ex => ex.id);
+            setSyncedExerciseIds(newSyncedIds);
+            return finalExercises;
           });
         }
       )
@@ -941,17 +1076,30 @@ export default function AppContainer() {
           console.log("Realtime history change:", payload);
           const pulledHistory = await pullHistoryFromSupabase(user.id);
           setHistory(prev => {
-            const merged = [...prev];
+            const pulledIds = pulledHistory.map(ph => ph.id);
+            const filteredPrev = prev.filter(log => {
+              const wasSynced = syncedHistoryIds.includes(log.id);
+              const isPulled = pulledIds.includes(log.id);
+              if (wasSynced && !isPulled) return false;
+              return true;
+            });
+
+            const merged = [...filteredPrev];
             pulledHistory.forEach(ph => {
               if (!merged.some(mh => mh.id === ph.id) && !deletedHistoryIds.includes(ph.id)) {
                 merged.push(ph);
               }
             });
+
+            let finalHistory = merged;
             if (payload.eventType === "DELETE") {
               const deletedId = payload.old.id;
-              return merged.filter(mh => mh.id !== deletedId);
+              finalHistory = merged.filter(mh => mh.id !== deletedId);
             }
-            return merged.sort((a, b) => b.date - a.date);
+
+            const newSyncedIds = finalHistory.filter(log => pulledIds.includes(log.id)).map(log => log.id);
+            setSyncedHistoryIds(newSyncedIds);
+            return finalHistory.sort((a, b) => b.date - a.date);
           });
         }
       )
@@ -977,7 +1125,7 @@ export default function AppContainer() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, isLoaded, deletedPlanIds, deletedExerciseIds, deletedHistoryIds]);
+  }, [user, isLoaded, deletedPlanIds, deletedExerciseIds, deletedHistoryIds, syncedPlanIds, syncedExerciseIds, syncedHistoryIds]);
 
   // Auth Handlers
   const handleAuthAction = async () => {
@@ -1047,6 +1195,21 @@ export default function AppContainer() {
     if (!isLoaded) return;
     localStorage.setItem("is_deleted_history_v1", JSON.stringify(deletedHistoryIds));
   }, [deletedHistoryIds, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    localStorage.setItem("is_synced_plans_v1", JSON.stringify(syncedPlanIds));
+  }, [syncedPlanIds, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    localStorage.setItem("is_synced_exercises_v1", JSON.stringify(syncedExerciseIds));
+  }, [syncedExerciseIds, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    localStorage.setItem("is_synced_history_v1", JSON.stringify(syncedHistoryIds));
+  }, [syncedHistoryIds, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
