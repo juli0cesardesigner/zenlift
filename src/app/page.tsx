@@ -817,6 +817,165 @@ export default function AppContainer() {
     }
   }, [user, isLoaded]);
 
+  // Supabase Realtime Listener
+  useEffect(() => {
+    if (!user || !isLoaded) return;
+
+    const channel = supabase
+      .channel("zenlift-realtime-changes")
+      // Listen to plans changes
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "plans" },
+        async (payload: any) => {
+          console.log("Realtime plan change:", payload);
+          const pulledPlans = await pullPlansFromSupabase(user.id);
+          setPlans(prev => {
+            const merged = [...prev];
+            pulledPlans.forEach(pp => {
+              const idx = merged.findIndex(mp => mp.id === pp.id);
+              if (idx !== -1) {
+                merged[idx] = pp;
+              } else if (!deletedPlanIds.includes(pp.id)) {
+                merged.push(pp);
+              }
+            });
+            if (payload.eventType === "DELETE") {
+              const deletedId = payload.old.id;
+              return merged.filter(mp => mp.id !== deletedId);
+            }
+            return merged;
+          });
+        }
+      )
+      // Listen to workouts changes
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "workouts" },
+        async () => {
+          const pulledPlans = await pullPlansFromSupabase(user.id);
+          setPlans(prev => {
+            const merged = [...prev];
+            pulledPlans.forEach(pp => {
+              const idx = merged.findIndex(mp => mp.id === pp.id);
+              if (idx !== -1) {
+                merged[idx] = pp;
+              } else if (!deletedPlanIds.includes(pp.id)) {
+                merged.push(pp);
+              }
+            });
+            return merged;
+          });
+        }
+      )
+      // Listen to planned_exercises changes
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "planned_exercises" },
+        async () => {
+          const pulledPlans = await pullPlansFromSupabase(user.id);
+          setPlans(prev => {
+            const merged = [...prev];
+            pulledPlans.forEach(pp => {
+              const idx = merged.findIndex(mp => mp.id === pp.id);
+              if (idx !== -1) {
+                merged[idx] = pp;
+              } else if (!deletedPlanIds.includes(pp.id)) {
+                merged.push(pp);
+              }
+            });
+            return merged;
+          });
+        }
+      )
+      // Listen to planned_sets changes
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "planned_sets" },
+        async () => {
+          const pulledPlans = await pullPlansFromSupabase(user.id);
+          setPlans(prev => {
+            const merged = [...prev];
+            pulledPlans.forEach(pp => {
+              const idx = merged.findIndex(mp => mp.id === pp.id);
+              if (idx !== -1) {
+                merged[idx] = pp;
+              } else if (!deletedPlanIds.includes(pp.id)) {
+                merged.push(pp);
+              }
+            });
+            return merged;
+          });
+        }
+      )
+      // Listen to custom exercises changes
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "exercises" },
+        async (payload: any) => {
+          console.log("Realtime exercise change:", payload);
+          const pulledCustom = await pullCustomExercisesFromSupabase(user.id);
+          setExercises(prev => {
+            const merged = [...prev];
+            pulledCustom.forEach(pe => {
+              if (!merged.some(me => me.id === pe.id) && !deletedExerciseIds.includes(pe.id)) {
+                merged.push(pe);
+              }
+            });
+            if (payload.eventType === "DELETE") {
+              const deletedId = payload.old.id;
+              return merged.filter(me => me.id !== deletedId);
+            }
+            return merged;
+          });
+        }
+      )
+      // Listen to history changes
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "history_logs" },
+        async (payload: any) => {
+          console.log("Realtime history change:", payload);
+          const pulledHistory = await pullHistoryFromSupabase(user.id);
+          setHistory(prev => {
+            const merged = [...prev];
+            pulledHistory.forEach(ph => {
+              if (!merged.some(mh => mh.id === ph.id) && !deletedHistoryIds.includes(ph.id)) {
+                merged.push(ph);
+              }
+            });
+            if (payload.eventType === "DELETE") {
+              const deletedId = payload.old.id;
+              return merged.filter(mh => mh.id !== deletedId);
+            }
+            return merged.sort((a, b) => b.date - a.date);
+          });
+        }
+      )
+      // Listen to focused exercises changes
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "focused_exercises" },
+        async () => {
+          const pulledFocus = await pullFocusedExercisesFromSupabase(user.id);
+          setFocusedExercises(prev => {
+            const merged = [...prev];
+            pulledFocus.forEach(pf => {
+              if (!merged.includes(pf)) {
+                merged.push(pf);
+              }
+            });
+            return merged;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, isLoaded, deletedPlanIds, deletedExerciseIds, deletedHistoryIds]);
+
   // Auth Handlers
   const handleAuthAction = async () => {
     setSyncStatus("syncing");
