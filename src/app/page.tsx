@@ -156,9 +156,6 @@ type HistoryLog = {
   }[];
 };
 
-// Helper para detectar desenvolvimento local
-const isLocalDevelopment = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-
 // --- INITIAL LIBRARY DATA ---
 const defaultExercises: ExerciseDef[] = [
   { id: "e1", name: "Supino Reto", muscle: "Peito" },
@@ -1041,11 +1038,6 @@ export default function AppContainer() {
   };
 
   const syncAllData = async (currentUser: SupabaseUser) => {
-    if (isLocalDevelopment) {
-      console.warn("⚡ Sincronismo desativado no ambiente local para evitar ressurreição de dados de produção.");
-      setSyncStatus("idle");
-      return;
-    }
     setSyncStatus("syncing");
     try {
       // 1. Exercises
@@ -1166,7 +1158,7 @@ export default function AppContainer() {
 
   // Supabase Broadcast Listener for Realtime Sync
   useEffect(() => {
-    if (!user || !isLoaded || isLocalDevelopment) return;
+    if (!user || !isLoaded) return;
 
     // We create a channel specific to this user.
     // 'broadcast: { self: false }' ensures we don't receive our own messages,
@@ -1351,7 +1343,7 @@ export default function AppContainer() {
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_exercises_v3", JSON.stringify(exercises));
-    if (user && !isSyncingFromRemoteRef.current && !isLocalDevelopment) {
+    if (user && !isSyncingFromRemoteRef.current) {
       pushCustomExercisesToSupabase(user.id, exercises, deletedExerciseIdsRef.current).then(() => {
         if (broadcastChannelRef.current) {
           broadcastChannelRef.current.send({
@@ -1367,7 +1359,7 @@ export default function AppContainer() {
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_plans_v3", JSON.stringify(plans));
-    if (user && !isSyncingFromRemoteRef.current && !isLocalDevelopment) {
+    if (user && !isSyncingFromRemoteRef.current) {
       pushPlansToSupabase(
         user.id,
         plans,
@@ -1399,7 +1391,7 @@ export default function AppContainer() {
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_history_v4", JSON.stringify(history));
-    if (user && !isSyncingFromRemoteRef.current && !isLocalDevelopment) {
+    if (user && !isSyncingFromRemoteRef.current) {
       pushHistoryToSupabase(user.id, history, deletedHistoryIdsRef.current).then(() => {
         if (broadcastChannelRef.current) {
           broadcastChannelRef.current.send({
@@ -1424,7 +1416,7 @@ export default function AppContainer() {
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("is_focused_exercises_v1", JSON.stringify(focusedExercises));
-    if (user && !isSyncingFromRemoteRef.current && !isLocalDevelopment) {
+    if (user && !isSyncingFromRemoteRef.current) {
       pushFocusedExercisesToSupabase(user.id, focusedExercises).then(() => {
         if (broadcastChannelRef.current) {
           broadcastChannelRef.current.send({
@@ -2432,6 +2424,7 @@ export default function AppContainer() {
       cancelText: "Cancelar",
       onConfirm: () => {
         setHistory(prev => prev.filter(log => log.id !== logId));
+        addDeletedHistoryId(logId);
       }
     });
   };
