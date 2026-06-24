@@ -238,7 +238,7 @@ const CustomSelect = ({ value, onChange, options, placeholder }: { value: string
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -5 }}
             transition={{ duration: 0.15 }}
-            className="absolute z-50 w-full mt-1 bg-grafite border border-concrete/10 rounded-xl shadow-xl overflow-hidden"
+            className="absolute z-[60] w-full mt-1 bg-noturno border border-concrete/10 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden"
           >
             <div className="max-h-60 overflow-y-auto custom-scrollbar">
               {options.map((opt) => (
@@ -5554,7 +5554,7 @@ export default function AppContainer() {
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-grafite border border-concrete/20 p-6 rounded-2xl shadow-2xl w-full max-w-sm relative z-10"
+              className="bg-noturno border border-concrete/20 p-6 rounded-2xl shadow-2xl w-full max-w-sm relative z-10"
             >
               <h3 className="font-display text-xl text-white mb-2 uppercase tracking-widest">Confirmar Ação</h3>
               <p className="text-concrete text-sm mb-6">{confirmConfig.message}</p>
