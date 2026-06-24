@@ -48,6 +48,7 @@ type ExerciseDef = {
   difficultyLevel?: string;
   exerciseCategory?: string;
   visibleFields?: string[];
+  isTimeBased?: boolean;
 };
 
 type PlannedSet = {
@@ -99,6 +100,8 @@ type ActiveSet = {
   restPauseSets?: number;
   restPauseSeconds?: number;
   failureType?: string;
+  suggestedWeight?: string;
+  suggestedReps?: string;
 };
 
 type ActiveExercise = {
@@ -106,6 +109,7 @@ type ActiveExercise = {
   exerciseId: string;
   sets: ActiveSet[];
   elapsedSeconds?: number;
+  overloadSuggestion?: string;
 };
 
 type ActiveWorkoutSession = {
@@ -114,6 +118,10 @@ type ActiveWorkoutSession = {
   name: string;
   startTime: number;
   exercises: ActiveExercise[];
+  lastInteractionTime: number;
+  totalIdleTimeMs: number;
+  isPaused?: boolean;
+  pauseStartTime?: number;
 };
 
 type HistoryLog = {
@@ -122,6 +130,8 @@ type HistoryLog = {
   date: number;
   durationMs: number;
   volumeKg: number;
+  idleTimeMs?: number;
+  prs?: string[];
   exercises: {
     name: string;
     elapsedSeconds?: number;
@@ -178,10 +188,45 @@ export default function AppContainer() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [activePlanId, setActivePlanId] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryLog[]>([]);
+  const [workoutSummary, setWorkoutSummary] = useState<HistoryLog | null>(null);
+  const [reviewingWorkoutLog, setReviewingWorkoutLog] = useState<HistoryLog | null>(null);
+  const [reviewName, setReviewName] = useState("");
+  const [reviewDate, setReviewDate] = useState("");
+  const [reviewTime, setReviewTime] = useState("");
+  const [reviewDurationMins, setReviewDurationMins] = useState("");
 
   // Active Workout Session
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkoutSession | null>(null);
+  const [isWorkoutMinimized, setIsWorkoutMinimized] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
+
+  // Stopwatch States for Time-based Exercises
+  const [activeStopwatchSetId, setActiveStopwatchSetId] = useState<string | null>(null);
+  const [activeStopwatchStartTime, setActiveStopwatchStartTime] = useState<number | null>(null);
+  const [activeStopwatchElapsedMs, setActiveStopwatchElapsedMs] = useState<number>(0);
+
+  // References
+  const blurMaskRef = useRef<HTMLDivElement>(null);
+
+  const [activeInputModal, setActiveInputModal] = useState<{
+    exerciseId: string;
+    setId: string;
+    field: "weight" | "reps";
+    initialValue: string;
+    suggestedValue: string;
+  } | null>(null);
+  const [modalTempValue, setModalTempValue] = useState<string>("");
+
+  const globalActiveSetId = useMemo(() => {
+    if (!activeWorkout) return null;
+    for (const ex of activeWorkout.exercises) {
+      if (!ex.sets.every(s => s.completed)) {
+        const incompleteSet = ex.sets.find(s => !s.completed);
+        if (incompleteSet) return incompleteSet.id;
+      }
+    }
+    return null;
+  }, [activeWorkout]);
 
   // Rest Timer
   const [restTimer, setRestTimer] = useState<{
@@ -189,6 +234,8 @@ export default function AppContainer() {
     endTime: number;
     exerciseName: string;
     setIndex: number;
+    nextExerciseName?: string;
+    nextExerciseLastWeight?: string;
   } | null>(null);
   const [restRemainingMs, setRestRemainingMs] = useState(0);
   const restTimerRef = useRef(restTimer);
@@ -446,7 +493,8 @@ export default function AppContainer() {
         breathing: ex.breathing || null,
         difficulty_level: ex.difficultyLevel || null,
         exercise_category: ex.exerciseCategory || null,
-        visible_fields: ex.visibleFields || []
+        visible_fields: ex.visibleFields || [],
+        is_time_based: ex.isTimeBased || false
       }));
       const { error: upErr } = await supabase.from("exercises").upsert(customToUpsert);
       if (upErr) throw upErr;
@@ -488,7 +536,8 @@ export default function AppContainer() {
         breathing: row.breathing || undefined,
         difficultyLevel: row.difficulty_level || undefined,
         exerciseCategory: row.exercise_category || undefined,
-        visibleFields: row.visible_fields || []
+        visibleFields: row.visible_fields || [],
+        isTimeBased: row.is_time_based || false
       }));
     } catch (e) {
       console.error("pullCustomExercisesFromSupabase error:", e);
@@ -726,7 +775,9 @@ export default function AppContainer() {
         name: log.name,
         date: log.date,
         duration_ms: log.durationMs,
-        volume_kg: log.volumeKg
+        volume_kg: log.volumeKg,
+        idle_time_ms: log.idleTimeMs || 0,
+        prs: log.prs || []
       }));
       const { error: lErr } = await supabase.from("history_logs").upsert(logsToUpsert);
       if (lErr) throw lErr;
@@ -845,6 +896,8 @@ export default function AppContainer() {
           date: parseInt(log.date) || Date.now(),
           durationMs: log.duration_ms,
           volumeKg: log.volume_kg,
+          idleTimeMs: log.idle_time_ms || 0,
+          prs: log.prs || [],
           exercises
         };
       });
@@ -1290,15 +1343,38 @@ export default function AppContainer() {
   }, [activePlanId]);
 
   // Active session timer
+  const activeWorkoutRef = useRef<ActiveWorkoutSession | null>(null);
+  useEffect(() => {
+    activeWorkoutRef.current = activeWorkout;
+  }, [activeWorkout]);
+
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (activeWorkout) {
       interval = setInterval(() => {
-        setElapsedTime(Date.now() - activeWorkout.startTime);
+        const currentWorkout = activeWorkoutRef.current;
+        if (!currentWorkout) return;
+        const now = Date.now();
+
+        if (currentWorkout.isPaused) {
+          setElapsedTime(currentWorkout.pauseStartTime! - currentWorkout.startTime - currentWorkout.totalIdleTimeMs);
+          return;
+        }
+
+        setElapsedTime(now - currentWorkout.startTime - currentWorkout.totalIdleTimeMs);
+
+        // Check for Auto-Pause (5 minutes of inactivity)
+        const IDLE_THRESHOLD = 5 * 60 * 1000;
+        if (now - currentWorkout.lastInteractionTime > IDLE_THRESHOLD) {
+          setActiveWorkout(prev => prev ? { ...prev, isPaused: true, pauseStartTime: now } : null);
+          return;
+        }
+
         // Only increment active exercise time if rest timer is not running
         if (!restTimerRef.current) {
           setActiveWorkout(prev => {
             if (!prev) return null;
+            if (prev.isPaused) return prev;
             const activeIdx = prev.exercises.findIndex(ae => ae.sets.some(s => !s.completed));
             const resolvedIdx = activeIdx === -1 ? prev.exercises.length - 1 : activeIdx;
             if (resolvedIdx < 0 || resolvedIdx >= prev.exercises.length) return prev;
@@ -1339,8 +1415,20 @@ export default function AppContainer() {
     }
     return () => cancelAnimationFrame(animationFrameId);
   }, [restTimer]);
-
-
+  // Stopwatch timer (for Time-based exercises)
+  useEffect(() => {
+    let animationFrameId: number;
+    if (activeStopwatchSetId && activeStopwatchStartTime) {
+      const update = () => {
+        setActiveStopwatchElapsedMs(Date.now() - activeStopwatchStartTime);
+        animationFrameId = requestAnimationFrame(update);
+      };
+      animationFrameId = requestAnimationFrame(update);
+    } else {
+      setActiveStopwatchElapsedMs(0);
+    }
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [activeStopwatchSetId, activeStopwatchStartTime]);
 
   // Format Elapsed Time (ms -> MM:SS)
   const formatTime = (ms: number) => {
@@ -1797,28 +1885,82 @@ export default function AppContainer() {
       workoutId: workout.id,
       name: `${planName} - ${workout.name}`,
       startTime: Date.now(),
-      exercises: workout.exercises.map(pe => ({
-        id: pe.id,
-        exerciseId: pe.exerciseId,
-        elapsedSeconds: 0,
-        sets: pe.sets.map((ps, idx) => ({
-          id: `as_${crypto.randomUUID()}`,
-          minReps: ps.minReps,
-          maxReps: ps.maxReps,
-          isDropSet: ps.isDropSet,
-          isToFailure: ps.isToFailure,
-          restSeconds: ps.restSeconds,
-          weight: "",
-          reps: "",
-          completed: false,
-          methodType: ps.methodType,
-          customMethodName: ps.customMethodName,
-          dropCount: ps.dropCount,
-          restPauseSets: ps.restPauseSets,
-          restPauseSeconds: ps.restPauseSeconds,
-          failureType: ps.failureType
-        }))
-      }))
+      lastInteractionTime: Date.now(),
+      totalIdleTimeMs: 0,
+      exercises: workout.exercises.map(pe => {
+        const exDef = exerciseMap[pe.exerciseId];
+        let suggestedW: string | undefined = undefined;
+        let suggestedR: string | undefined = undefined;
+        let overloadSuggestion: string | undefined = undefined;
+
+        if (exDef) {
+          const performances: { weight: number, reps: number, date: number }[] = [];
+          
+          history.forEach(log => {
+            log.exercises.forEach(he => {
+              if (he.name === exDef.name) {
+                let maxW = 0;
+                let maxR = 0;
+                he.sets.forEach(hs => {
+                  const w = parseFloat(hs.weight) || 0;
+                  const r = parseInt(hs.reps) || 0;
+                  if (w > maxW || (w === maxW && r > maxR)) {
+                    maxW = w;
+                    maxR = r;
+                  }
+                });
+                if (maxW > 0) {
+                  performances.push({ weight: maxW, reps: maxR, date: log.date });
+                }
+              }
+            });
+          });
+
+          performances.sort((a, b) => b.date - a.date);
+
+          if (performances.length > 0) {
+            const lastP = performances[0];
+            suggestedW = lastP.weight.toString();
+            suggestedR = lastP.reps.toString();
+
+            if (performances.length >= 2) {
+              const prevP = performances[1];
+              if (lastP.weight === prevP.weight && lastP.reps === prevP.reps && lastP.weight > 0) {
+                const step = lastP.weight >= 40 ? 5 : 2; // +5kg for heavy exercises, +2kg for lighter ones
+                const newWeight = lastP.weight + step;
+                suggestedW = newWeight.toString();
+                overloadSuggestion = `Você já fez ${lastP.reps}x ${lastP.weight}kg por 2 treinos seguidos. Tentar ${newWeight}kg hoje?`;
+              }
+            }
+          }
+        }
+
+        return {
+          id: pe.id,
+          exerciseId: pe.exerciseId,
+          elapsedSeconds: 0,
+          overloadSuggestion,
+          sets: pe.sets.map((ps, idx) => ({
+            id: `as_${crypto.randomUUID()}`,
+            minReps: ps.minReps,
+            maxReps: ps.maxReps,
+            isDropSet: ps.isDropSet,
+            isToFailure: ps.isToFailure,
+            restSeconds: ps.restSeconds,
+            weight: "",
+            reps: "",
+            suggestedWeight: idx === 0 ? suggestedW : undefined,
+            suggestedReps: idx === 0 ? suggestedR : undefined,
+            completed: false,
+            methodType: ps.methodType,
+            customMethodName: ps.customMethodName,
+            dropCount: ps.dropCount,
+            restPauseSets: ps.restPauseSets,
+            restPauseSeconds: ps.restPauseSeconds,
+            failureType: ps.failureType
+          }))
+        };
+      })
     };
 
     setActiveWorkout(session);
@@ -1845,26 +1987,70 @@ export default function AppContainer() {
       if (!prev) return null;
       return {
         ...prev,
-        exercises: prev.exercises.map(ex => {
+        lastInteractionTime: Date.now(),
+        exercises: prev.exercises.map((ex, exIndex) => {
           if (ex.id !== exerciseId) return ex;
 
-          const updatedSets = ex.sets.map(s => {
+          const updatedSets = ex.sets.map((s, sIdx) => {
             if (s.id !== setId) return s;
 
-            // Trigger Rest Timer if completing (and not the absolute last set of the workout)
+            // Trigger Rest Timer
             if (field === "completed" && value === true && s.restSeconds > 0 && !s.completed && !isLastSetOfWorkout) {
               const exDef = exerciseMap[ex.exerciseId];
-              const setIndex = ex.sets.findIndex(set => set.id === setId) + 1;
+              const setIndex = sIdx + 1;
+              
+              // Determine next exercise
+              let nextExName: string | undefined = undefined;
+              let nextExLastWeight: string | undefined = undefined;
+              
+              const isLastSetOfThisExercise = sIdx === ex.sets.length - 1;
+              if (isLastSetOfThisExercise) {
+                const nextEx = prev.exercises[exIndex + 1];
+                if (nextEx) {
+                  const nextExDef = exerciseMap[nextEx.exerciseId];
+                  nextExName = nextExDef?.name;
+                  
+                  // Find in history
+                  for (let i = 0; i < history.length; i++) {
+                    const hLog = history[i];
+                    const hEx = hLog.exercises.find(h => h.name === nextExName);
+                    if (hEx && hEx.sets.length > 0) {
+                      let maxW = 0;
+                      hEx.sets.forEach(hs => {
+                        const w = parseFloat(hs.weight) || 0;
+                        if (w > maxW) maxW = w;
+                      });
+                      if (maxW > 0) nextExLastWeight = maxW.toString();
+                      break;
+                    }
+                  }
+                }
+              }
+
               setRestTimer({
                 duration: s.restSeconds,
                 endTime: Date.now() + s.restSeconds * 1000,
                 exerciseName: exDef?.name || "Exercício",
-                setIndex
+                setIndex,
+                nextExerciseName: nextExName,
+                nextExerciseLastWeight: nextExLastWeight
               });
             }
 
             return { ...s, [field]: value };
           });
+
+          // Auto-propagate weight and reps to subsequent sets as placeholders if this is the first set and we just clicked "completed"
+          if (field === "completed" && value === true && updatedSets[0].id === setId) {
+            const firstSetWeight = updatedSets[0].weight || updatedSets[0].suggestedWeight;
+            const firstSetReps = updatedSets[0].reps || updatedSets[0].suggestedReps;
+            for (let i = 1; i < updatedSets.length; i++) {
+              if (!updatedSets[i].completed) {
+                if (!updatedSets[i].weight && !updatedSets[i].suggestedWeight && firstSetWeight) updatedSets[i].suggestedWeight = firstSetWeight;
+                if (!updatedSets[i].reps && !updatedSets[i].suggestedReps && firstSetReps) updatedSets[i].suggestedReps = firstSetReps;
+              }
+            }
+          }
 
           return { ...ex, sets: updatedSets };
         })
@@ -1884,6 +2070,22 @@ export default function AppContainer() {
         });
       }, 300);
     }
+  };
+
+  const handleSkipExercise = (exerciseId: string) => {
+    if (!activeWorkout) return;
+    
+    setActiveWorkout(prev => {
+      if (!prev) return null;
+      const exIndex = prev.exercises.findIndex(e => e.id === exerciseId);
+      if (exIndex === -1) return prev;
+      
+      const newExercises = [...prev.exercises];
+      const [skippedEx] = newExercises.splice(exIndex, 1);
+      newExercises.push(skippedEx);
+      
+      return { ...prev, lastInteractionTime: Date.now(), exercises: newExercises };
+    });
   };
 
   const handleAddActiveSet = (exerciseId: string) => {
@@ -1963,6 +2165,7 @@ export default function AppContainer() {
 
     setActiveWorkout({
       ...activeWorkout,
+      lastInteractionTime: Date.now(),
       exercises: [...activeWorkout.exercises, newActiveEx]
     });
     setAddingExerciseToActiveWorkout(false);
@@ -2003,21 +2206,85 @@ export default function AppContainer() {
     }).filter(ex => ex.sets.length > 0);
 
     if (completedExercises.length > 0) {
+      const prs: string[] = [];
+
+      completedExercises.forEach(ce => {
+        let currentMaxW = 0;
+        ce.sets.forEach(s => {
+          const w = parseFloat(s.weight) || 0;
+          if (w > currentMaxW) currentMaxW = w;
+        });
+
+        let historyMaxW = 0;
+        history.forEach(log => {
+          log.exercises.forEach(he => {
+            if (he.name === ce.name) {
+              he.sets.forEach(hs => {
+                const w = parseFloat(hs.weight) || 0;
+                if (w > historyMaxW) historyMaxW = w;
+              });
+            }
+          });
+        });
+
+        if (currentMaxW > historyMaxW && historyMaxW > 0) {
+          prs.push(`${ce.name}: ${currentMaxW}kg`);
+        } else if (currentMaxW > 0 && historyMaxW === 0) {
+          prs.push(`${ce.name}: ${currentMaxW}kg (Primeiro registro)`);
+        }
+      });
+
+      let finalIdleTime = activeWorkout.totalIdleTimeMs || 0;
+      if (activeWorkout.isPaused && activeWorkout.pauseStartTime) {
+        finalIdleTime += Date.now() - activeWorkout.pauseStartTime;
+      }
+
       const newLog: HistoryLog = {
         id: `h_${crypto.randomUUID()}`,
         name: activeWorkout.name,
         date: activeWorkout.startTime,
-        durationMs: Date.now() - activeWorkout.startTime,
+        durationMs: Date.now() - activeWorkout.startTime - finalIdleTime,
+        idleTimeMs: finalIdleTime,
         volumeKg: Math.round(totalVolume),
+        prs,
         exercises: completedExercises
       };
 
-      setHistory(prev => [newLog, ...prev]);
-    }
+      setReviewingWorkoutLog(newLog);
+      
+      const d = new Date(activeWorkout.startTime);
+      // Adjust to local timezone to prevent offset issues with input type="date"
+      const localDate = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      const localTime = d.toTimeString().split(' ')[0].slice(0, 5); // HH:MM
 
-    setActiveWorkout(null);
-    setRestTimer(null);
-    setActiveTab("history"); // Navigate to history to see the results
+      setReviewName(activeWorkout.name);
+      setReviewDate(localDate);
+      setReviewTime(localTime);
+      setReviewDurationMins(Math.floor((Date.now() - activeWorkout.startTime - finalIdleTime) / 60000).toString());
+
+      // Pause active workout while reviewing
+      setActiveWorkout(prev => prev ? {
+        ...prev,
+        isPaused: true,
+        pauseStartTime: prev.isPaused ? prev.pauseStartTime : Date.now()
+      } : null);
+    } else {
+      // If no exercises completed, just cancel
+      setActiveWorkout(null);
+      setRestTimer(null);
+    }
+  };
+
+  const handleDeleteHistoryLog = (logId: string) => {
+    setDialog({
+      title: "Excluir Treino",
+      message: "Tem certeza que deseja excluir este treino do histórico?",
+      confirmText: "Excluir",
+      cancelText: "Cancelar",
+      onConfirm: () => {
+        setHistory(prev => prev.filter(log => log.id !== logId));
+      }
+    });
   };
 
   const handleCancelWorkout = () => {
@@ -2321,6 +2588,13 @@ export default function AppContainer() {
               <h3 className="font-mono text-vulcanico text-xs uppercase font-bold tracking-widest border-b border-concrete/10 pb-2">Detalhes Técnicos</h3>
               
               <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1 bg-vulcanico/10 p-3 rounded-lg border border-vulcanico/30">
+                  <div className="flex justify-between items-center">
+                    <label className="font-mono text-white text-[10px] uppercase font-bold tracking-widest">Apenas Tempo (Sem Carga)</label>
+                    <ToggleSwitch checked={editingExercise.isTimeBased || false} onChange={(c) => setEditingExercise({...editingExercise, isTimeBased: c})} />
+                  </div>
+                  <p className="font-mono text-[9px] text-concrete/80 leading-relaxed mt-1">Se ativado, este exercício não pedirá peso/repetições e exibirá um cronômetro na tela de treino.</p>
+                </div>
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center">
                     <label className="font-mono text-concrete text-[10px] uppercase">Músculos Secundários</label>
@@ -2428,24 +2702,87 @@ export default function AppContainer() {
       )}
 
       {/* -------------------- ACTIVE WORKOUT OVERLAY -------------------- */}
-      {activeWorkout && (
+      {activeWorkout && !isWorkoutMinimized && (
         <div className="absolute inset-0 z-40 bg-noturno flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex-none p-6 pb-4 border-b border-concrete/20 flex justify-between items-center bg-noturno z-10">
             <div>
               <h2 className="font-display text-2xl uppercase text-white leading-none">{activeWorkout.name}</h2>
             </div>
-            <button 
-              onClick={handleCancelWorkout} 
-              className="text-concrete hover:text-white transition-colors flex flex-col items-center"
-            >
-              <X size={20} />
-              <span className="font-mono text-[9px] uppercase mt-1">Cancelar</span>
-            </button>
+            <div className="flex items-center gap-6">
+              <button 
+                onClick={() => setIsWorkoutMinimized(true)} 
+                className="text-concrete hover:text-white transition-colors flex flex-col items-center"
+              >
+                <ChevronDown size={20} />
+                <span className="font-mono text-[9px] uppercase mt-1">Minimizar</span>
+              </button>
+              <button 
+                onClick={handleCancelWorkout} 
+                className="text-concrete hover:text-white transition-colors flex flex-col items-center"
+              >
+                <X size={20} />
+                <span className="font-mono text-[9px] uppercase mt-1">Cancelar</span>
+              </button>
+            </div>
           </div>
 
           {/* Active Workout Screen Scroll */}
-          <div className="flex-1 overflow-y-auto p-6 pb-40">
+          <div 
+            className="flex-1 overflow-y-auto p-6 pb-40 relative"
+            onScroll={(e) => {
+              if (!blurMaskRef.current) return;
+              const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+              const distanceToBottom = scrollHeight - scrollTop - clientHeight;
+              const fadeThreshold = 250; // Start fading out when 250px from the bottom
+              const newOpacity = distanceToBottom < fadeThreshold ? Math.max(0, distanceToBottom / fadeThreshold) : 1;
+              blurMaskRef.current.style.opacity = newOpacity.toString();
+            }}
+          >
+            
+            {/* Viewport Spotlight Blur Overlay */}
+            <div 
+              ref={blurMaskRef}
+              className="fixed inset-x-0 bottom-[90px] h-[55%] pointer-events-none z-[45] transition-opacity duration-75" 
+              style={{
+                backdropFilter: "blur(4px)",
+                WebkitBackdropFilter: "blur(4px)",
+                maskImage: "linear-gradient(to bottom, transparent 0%, black 100%)",
+                WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 100%)",
+                background: "linear-gradient(to bottom, transparent 0%, rgba(13,13,13,0.85) 100%)"
+              }}
+            ></div>
+
+            
+            {/* Netflix-style Auto-Pause Notification */}
+            {activeWorkout.isPaused && (
+              <div className="sticky top-0 mb-6 z-50 bg-vulcanico rounded-xl p-4 shadow-2xl border border-white/10 animate-slide-down flex flex-col gap-3">
+                <div className="flex gap-3 items-start">
+                  <div className="bg-noturno p-2 rounded-full text-vulcanico shrink-0">
+                    <Clock size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-display text-lg uppercase text-noturno leading-tight font-bold">Tudo certo por aí?</h4>
+                    <p className="font-mono text-[10px] text-noturno/80 mt-1 uppercase font-bold tracking-widest">Notei um longo período sem atividade. Pausei seu relógio geral só por precaução.</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    setActiveWorkout(prev => prev ? {
+                      ...prev,
+                      isPaused: false,
+                      totalIdleTimeMs: prev.totalIdleTimeMs + (Date.now() - prev.pauseStartTime!),
+                      lastInteractionTime: Date.now(),
+                      pauseStartTime: undefined
+                    } : null);
+                  }}
+                  className="bg-noturno text-white font-display uppercase py-3 rounded-lg w-full text-sm hover:bg-black transition-colors shadow-lg"
+                >
+                  Estou Aqui, Continuar!
+                </button>
+              </div>
+            )}
+
             <div className="flex flex-col gap-10">
               {activeWorkout.exercises.length === 0 ? (
                 <div className="py-12 text-center">
@@ -2510,20 +2847,27 @@ export default function AppContainer() {
                       key={ae.id} 
                       className="flex flex-col relative transition-all duration-500"
                       style={
-                        isQueued 
-                          ? {
-                              filter: distance === 1 ? "blur(0.8px)" : distance === 2 ? "blur(2.2px)" : "blur(4px)",
-                              opacity: distance === 1 ? 0.75 : distance === 2 ? 0.40 : 0.15,
-                              pointerEvents: "none",
-                            }
+                        isQueued && isWorkoutMinimized
+                          ? { opacity: distance === 1 ? 0.75 : distance === 2 ? 0.40 : 0.15 }
                           : undefined
                       }
                     >
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex flex-col gap-1 w-full max-w-[65%]">
-                            <h3 className="font-display text-2xl uppercase text-vulcanico leading-tight">
-                              {exDef?.name || "Desconhecido"}
-                            </h3>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-display text-2xl uppercase text-vulcanico leading-tight">
+                                {exDef?.name || "Desconhecido"}
+                              </h3>
+                              {distance === 0 && !isExerciseCompleted && activeWorkout.exercises.length > 1 && (
+                                <button 
+                                  onClick={() => handleSkipExercise(ae.id)}
+                                  className="text-[9px] font-mono uppercase bg-concrete/10 hover:bg-concrete/20 text-concrete hover:text-white px-2 py-1 rounded border border-concrete/20 transition-colors"
+                                  title="Pular para o fim da lista"
+                                >
+                                  Pular
+                                </button>
+                              )}
+                            </div>
                             {exDef?.videoUrl && !isQueued && (
                               <div className="w-full mt-2 mb-2 rounded-lg overflow-hidden border border-concrete/20 bg-black">
                                 <video 
@@ -2558,6 +2902,13 @@ export default function AppContainer() {
                             </span>
                           </div>
                         </div>
+
+                        {ae.overloadSuggestion && distance === 0 && !isExerciseCompleted && (
+                          <div className="mb-4 bg-gradient-to-r from-vulcanico/20 to-transparent border-l-2 border-vulcanico p-3 rounded-r-lg">
+                            <span className="font-mono text-xs text-vulcanico font-bold tracking-tight">💡 Desafio: </span>
+                            <span className="font-mono text-xs text-white/90">{ae.overloadSuggestion}</span>
+                          </div>
+                        )}
 
                         {/* Visible Exercise Details */}
                         {exDef && exDef.visibleFields && exDef.visibleFields.length > 0 && !isQueued && (
@@ -2610,12 +2961,14 @@ export default function AppContainer() {
                               ? `${set.minReps}-${set.maxReps}` 
                               : "Livre";
 
+                            const isActiveSet = set.id === globalActiveSetId;
+
                             return (
                               <div 
                                 key={set.id} 
                                 className={`grid grid-cols-12 items-center text-center py-2 transition-all rounded-xl ${
                                   set.completed ? "bg-vulcanico/10 opacity-70" : "bg-concrete/5"
-                                }`}
+                                } ${isActiveSet ? "ring-2 ring-vulcanico shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse" : ""}`}
                               >
                                 <div className="col-span-2 font-mono text-xs flex flex-col items-center justify-center">
                                   <span className="text-white font-bold">{sIdx + 1}</span>
@@ -2650,29 +3003,89 @@ export default function AppContainer() {
                                   <div>{targetText}</div>
                                 </div>
 
-                                <div className="col-span-3 px-1">
-                                  <input 
-                                    type="number"
-                                    inputMode="decimal"
-                                    placeholder="0"
-                                    value={set.weight}
-                                    onChange={(e) => handleUpdateActiveSet(ae.id, set.id, "weight", e.target.value)}
-                                    className="w-full bg-transparent border-b border-concrete/30 text-center font-mono text-lg text-white focus:outline-none focus:border-vulcanico py-0.5"
-                                    disabled={set.completed}
-                                  />
-                                </div>
+                                {exDef?.isTimeBased ? (
+                                  <div className="col-span-5 px-1">
+                                    <button
+                                      onClick={() => {
+                                        if (set.completed) {
+                                          handleUpdateActiveSet(ae.id, set.id, "completed", false);
+                                          return;
+                                        }
+                                        if (activeStopwatchSetId === set.id) {
+                                          // PAUSE/STOP
+                                          const finalTime = formatTime(activeStopwatchElapsedMs);
+                                          setActiveStopwatchSetId(null);
+                                          setActiveStopwatchStartTime(null);
+                                          handleUpdateActiveSet(ae.id, set.id, "reps", finalTime);
+                                        } else {
+                                          // PLAY
+                                          setActiveStopwatchSetId(set.id);
+                                          setActiveStopwatchStartTime(Date.now());
+                                          setActiveStopwatchElapsedMs(0);
+                                        }
+                                      }}
+                                      className={`w-full bg-vulcanico/10 border ${activeStopwatchSetId === set.id ? 'border-vulcanico/80 bg-vulcanico/20' : 'border-vulcanico/30'} rounded-lg flex items-center justify-center gap-2 py-1.5 font-mono focus:outline-none transition-colors ${set.completed ? 'opacity-50 line-through text-concrete' : 'text-vulcanico'}`}
+                                    >
+                                      {activeStopwatchSetId === set.id ? (
+                                        <>
+                                          <div className="w-2 h-2 rounded-full bg-vulcanico animate-pulse"></div>
+                                          <span className="text-sm font-bold">{formatTime(activeStopwatchElapsedMs)}</span>
+                                        </>
+                                      ) : set.completed && set.reps ? (
+                                        <span className="text-sm">{set.reps}</span>
+                                      ) : (
+                                        <>
+                                          <Play size={12} className="fill-vulcanico" />
+                                          <span className="text-[10px] uppercase tracking-widest font-bold">Iniciar</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="col-span-3 px-1">
+                                      <button 
+                                        onClick={() => {
+                                          if (!set.completed) {
+                                            setActiveInputModal({
+                                              exerciseId: ae.id,
+                                              setId: set.id,
+                                              field: "weight",
+                                              initialValue: set.weight,
+                                              suggestedValue: set.suggestedWeight || ""
+                                            });
+                                            setModalTempValue(set.weight || set.suggestedWeight || "0");
+                                          }
+                                        }}
+                                        className={`w-full bg-transparent border-b border-concrete/30 text-center font-mono text-lg focus:outline-none py-0.5 min-h-[32px] ${!set.weight && set.suggestedWeight ? 'text-concrete/70' : 'text-white'}`}
+                                        disabled={set.completed}
+                                      >
+                                        {set.weight || set.suggestedWeight || "0"}
+                                      </button>
+                                    </div>
 
-                                <div className="col-span-2 px-1">
-                                  <input 
-                                    type="number"
-                                    inputMode="numeric"
-                                    placeholder="0"
-                                    value={set.reps}
-                                    onChange={(e) => handleUpdateActiveSet(ae.id, set.id, "reps", e.target.value)}
-                                    className="w-full bg-transparent border-b border-concrete/30 text-center font-mono text-lg text-white focus:outline-none focus:border-vulcanico py-0.5"
-                                    disabled={set.completed}
-                                  />
-                                </div>
+                                    <div className="col-span-2 px-1">
+                                      <button 
+                                        onClick={() => {
+                                          if (!set.completed) {
+                                            setActiveInputModal({
+                                              exerciseId: ae.id,
+                                              setId: set.id,
+                                              field: "reps",
+                                              initialValue: set.reps,
+                                              suggestedValue: set.suggestedReps || ""
+                                            });
+                                            setModalTempValue(set.reps || set.suggestedReps || "0");
+                                          }
+                                        }}
+                                        className={`w-full bg-transparent border-b border-concrete/30 text-center font-mono text-lg focus:outline-none py-0.5 min-h-[32px] ${!set.reps && set.suggestedReps ? 'text-concrete/70' : 'text-white'}`}
+                                        disabled={set.completed}
+                                      >
+                                        {set.reps || set.suggestedReps || "0"}
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
 
                                 <div className="col-span-2 flex justify-center">
                                   <button 
@@ -2792,6 +3205,98 @@ export default function AppContainer() {
               </div>
             </div>
           </div>
+
+          {/* Smart Input Modal */}
+          {activeInputModal && (() => {
+            const isWeight = activeInputModal.field === "weight";
+            
+            const handleQuickAction = (val: number) => {
+              const current = parseFloat(modalTempValue) || 0;
+              const next = Math.max(0, current + val);
+              setModalTempValue(next % 1 !== 0 ? next.toFixed(1) : next.toString());
+            };
+
+            const handleConfirm = () => {
+              handleUpdateActiveSet(
+                activeInputModal.exerciseId,
+                activeInputModal.setId,
+                activeInputModal.field,
+                modalTempValue
+              );
+              setActiveInputModal(null);
+            };
+
+            return (
+              <div className="absolute inset-0 z-[60] bg-noturno/80 backdrop-blur-sm flex flex-col justify-end">
+                <div className="bg-noturno border-t border-concrete/20 rounded-t-3xl p-6 flex flex-col gap-6 animate-fade-in shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+                  
+                  {/* Header & Close */}
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-display text-xl text-concrete uppercase tracking-widest">
+                      {isWeight ? "Ajustar Carga" : "Ajustar Repetições"}
+                    </h3>
+                    <button onClick={() => setActiveInputModal(null)} className="text-concrete hover:text-white p-2">
+                      <X size={24} />
+                    </button>
+                  </div>
+
+                  {/* Big Number Display */}
+                  <div className="flex flex-col items-center justify-center py-4">
+                    <span className="font-mono text-8xl text-white font-bold tracking-tighter tabular-nums drop-shadow-[0_0_15px_rgba(255,255,255,0.15)]">
+                      {modalTempValue || "0"}
+                      <span className="text-3xl text-concrete ml-2 font-normal">{isWeight ? "kg" : "reps"}</span>
+                    </span>
+                  </div>
+
+                  {/* Slider */}
+                  <div className="w-full px-2 mt-4">
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max={isWeight ? "200" : "50"} 
+                      step={isWeight ? "0.5" : "1"}
+                      value={modalTempValue || 0}
+                      onChange={(e) => setModalTempValue(e.target.value)}
+                      className="w-full h-2 bg-concrete/20 rounded-lg appearance-none cursor-pointer accent-[#EF4444]"
+                      style={{ accentColor: "#EF4444" }}
+                    />
+                    <div className="flex justify-between text-concrete font-mono text-[10px] mt-2 px-1">
+                      <span>0</span>
+                      <span>{isWeight ? "200" : "50"}</span>
+                    </div>
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="grid grid-cols-4 gap-3 mt-4">
+                    {isWeight ? (
+                      <>
+                        <button onClick={() => handleQuickAction(-5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">-5</button>
+                        <button onClick={() => handleQuickAction(-2.5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">-2.5</button>
+                        <button onClick={() => handleQuickAction(2.5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">+2.5</button>
+                        <button onClick={() => handleQuickAction(5)} className="bg-vulcanico/20 text-vulcanico border border-vulcanico/30 py-3 rounded-xl font-mono text-sm hover:bg-vulcanico/30 hover:text-vulcanico active:scale-95 transition-all">+5</button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => setModalTempValue("0")} className="bg-red-950/40 text-red-400 py-3 rounded-xl font-mono text-[10px] uppercase font-bold hover:bg-red-900/50 active:scale-95 transition-all">Falhou</button>
+                        <button onClick={() => handleQuickAction(-1)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">-1</button>
+                        <button onClick={() => handleQuickAction(1)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">+1</button>
+                        <button onClick={() => handleQuickAction(5)} className="bg-vulcanico/20 text-vulcanico border border-vulcanico/30 py-3 rounded-xl font-mono text-sm hover:bg-vulcanico/30 hover:text-vulcanico active:scale-95 transition-all">+5</button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Confirm Button */}
+                  <button 
+                    onClick={handleConfirm}
+                    className="w-full bg-vulcanico text-noturno font-display uppercase tracking-widest py-4 rounded-xl text-xl mt-6 active:scale-95 transition-transform"
+                  >
+                    Confirmar
+                  </button>
+
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Full-Screen Rest Timer Overlay with Glassmorphism */}
           {restTimer && (
@@ -3473,7 +3978,7 @@ export default function AppContainer() {
       )}
 
       {/* -------------------- MAIN TABS -------------------- */}
-      <div className={`flex-1 overflow-y-auto ${activeWorkout ? "hidden" : "block"}`}>
+      <div className={`flex-1 overflow-y-auto ${activeWorkout && !isWorkoutMinimized ? "hidden" : "block"}`}>
         
         {/* TAB: PLANOS */}
         {activeTab === "plans" && !editingPlan && (
@@ -3581,14 +4086,22 @@ export default function AppContainer() {
                   {activePlan.workouts.length > 0 && (
                     <button 
                       onClick={() => {
+                        if (activeWorkout) {
+                          setIsWorkoutMinimized(false);
+                          return;
+                        }
                         const currentWorkout = activePlan.workouts[activeWorkoutIndex];
                         if (currentWorkout) {
                           handleStartWorkout(currentWorkout, activePlan.name);
                         }
                       }}
-                      className="bg-vulcanico hover:bg-white text-noturno font-display text-sm uppercase py-3.5 transition-colors w-full text-center tracking-wider mt-4 rounded-2xl"
+                      className={`font-display text-sm uppercase py-3.5 transition-colors w-full text-center tracking-wider mt-4 rounded-2xl ${
+                        activeWorkout 
+                          ? "bg-concrete/20 text-concrete hover:bg-concrete/30 hover:text-white"
+                          : "bg-vulcanico hover:bg-white text-noturno"
+                      }`}
                     >
-                      Iniciar Treino
+                      {activeWorkout ? "Treino em Andamento..." : "Iniciar Treino"}
                     </button>
                   )}
                 </>
@@ -4269,9 +4782,18 @@ export default function AppContainer() {
                             <p className="font-mono text-vulcanico text-[10px] uppercase mb-1">{dateStr}</p>
                             <h2 className="font-display text-2xl uppercase text-white leading-none">{log.name}</h2>
                           </div>
-                          <div className="text-right font-mono text-[9px] text-concrete uppercase leading-tight shrink-0">
-                            <p>{formatTime(log.durationMs)}</p>
-                            <p className="text-vulcanico font-bold mt-0.5">{log.volumeKg} kg Vol</p>
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            <button
+                              onClick={() => handleDeleteHistoryLog(log.id)}
+                              className="text-concrete/50 hover:text-red-500 transition-colors p-1"
+                              title="Excluir Treino"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                            <div className="text-right font-mono text-[9px] text-concrete uppercase leading-tight">
+                              <p>{formatTime(log.durationMs)}</p>
+                              <p className="text-vulcanico font-bold mt-0.5">{log.volumeKg} kg Vol</p>
+                            </div>
                           </div>
                         </div>
 
@@ -4289,7 +4811,7 @@ export default function AppContainer() {
                               </div>
                               <div className="flex flex-wrap gap-1 font-mono text-[9px] text-concrete uppercase mt-0.5">
                                 {ex.sets.map((s, idx) => {
-                                  let label = `${s.weight}kg x ${s.reps}`;
+                                  let label = s.weight ? `${s.weight}kg x ${s.reps}` : s.reps;
                                   let methodTag = "";
                                   const type = s.methodType || (s.isDropSet ? "drop-set" : s.isToFailure ? "failure" : "normal");
                                   if (type === "drop-set") {
@@ -4330,8 +4852,31 @@ export default function AppContainer() {
         )}
       </div>
 
+      {/* -------------------- MINI PLAYER -------------------- */}
+      {activeWorkout && isWorkoutMinimized && (
+        <div 
+          className="absolute bottom-[90px] left-4 right-4 z-40 bg-vulcanico rounded-xl shadow-[0_10px_30px_rgba(255,65,3,0.3)] border border-vulcanico/50 p-4 flex justify-between items-center cursor-pointer animate-slide-up"
+          onClick={() => setIsWorkoutMinimized(false)}
+        >
+          <div className="flex flex-col gap-1">
+             <span className="font-display text-base text-noturno uppercase leading-none font-bold">
+               {activeWorkout.name}
+             </span>
+             <span className="font-mono text-[10px] text-noturno/80 uppercase font-bold flex items-center gap-1">
+               <span className="w-1.5 h-1.5 rounded-full bg-noturno animate-pulse"></span> Em andamento...
+             </span>
+          </div>
+          <button 
+            onClick={(e) => { e.stopPropagation(); setIsWorkoutMinimized(false); }} 
+            className="text-noturno bg-black/10 p-2 rounded-full hover:bg-black/20 transition-colors"
+          >
+            <ChevronUp size={18} />
+          </button>
+        </div>
+      )}
+
       {/* BOTTOM NAVIGATION BAR */}
-      {!activeWorkout && (
+      {(!activeWorkout || isWorkoutMinimized) && (
         <nav className="flex-none w-full h-20 bg-noturno border-t border-concrete/10 flex justify-around items-center px-4 z-30">
           <button 
             onClick={() => setActiveTab("plans")}
@@ -4465,6 +5010,240 @@ export default function AppContainer() {
           </div>
         </div>
       )}
+
+      {/* WORKOUT REVIEW MODAL (Pre-Strava) */}
+      {reviewingWorkoutLog && (
+        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col animate-fade-in pb-safe pt-safe overflow-y-auto">
+          <div className="flex-1 flex flex-col p-6 max-w-md w-full mx-auto">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="font-display text-2xl text-white uppercase">Revisão do Treino</h2>
+              <button onClick={() => setReviewingWorkoutLog(null)} className="text-concrete hover:text-white p-2">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="bg-vulcanico/10 border border-vulcanico/30 rounded-2xl p-6 flex flex-col gap-6 mb-8 flex-1">
+              <div className="flex flex-col gap-2">
+                <label className="font-mono text-[10px] text-concrete uppercase tracking-widest font-bold">Nome do Treino</label>
+                <input 
+                  type="text" 
+                  value={reviewName}
+                  onChange={e => setReviewName(e.target.value)}
+                  className="w-full bg-noturno border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2">
+                  <label className="font-mono text-[10px] text-concrete uppercase tracking-widest font-bold">Data</label>
+                  <input 
+                    type="date" 
+                    value={reviewDate}
+                    onChange={e => setReviewDate(e.target.value)}
+                    className="w-full bg-noturno border-b border-concrete/30 py-2 font-mono text-sm text-white focus:outline-none focus:border-vulcanico transition-colors [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="font-mono text-[10px] text-concrete uppercase tracking-widest font-bold">Hora Início</label>
+                  <input 
+                    type="time" 
+                    value={reviewTime}
+                    onChange={e => setReviewTime(e.target.value)}
+                    className="w-full bg-noturno border-b border-concrete/30 py-2 font-mono text-sm text-white focus:outline-none focus:border-vulcanico transition-colors [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="font-mono text-[10px] text-concrete uppercase tracking-widest font-bold">Duração (minutos)</label>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="number" 
+                    min="1"
+                    value={reviewDurationMins}
+                    onChange={e => setReviewDurationMins(e.target.value)}
+                    className="w-full bg-noturno border-b border-concrete/30 py-2 font-display text-2xl text-white focus:outline-none focus:border-vulcanico transition-colors"
+                  />
+                  <span className="text-concrete font-mono text-sm">min</span>
+                </div>
+              </div>
+              
+              <div className="mt-auto bg-black/40 p-4 rounded-xl flex items-center justify-center gap-2 border border-concrete/5">
+                <span className="text-lg">🔥</span>
+                <span className="font-mono text-[10px] text-concrete uppercase font-bold tracking-widest">
+                  Gasto Est.: <span className="text-white">~{Math.round((parseInt(reviewDurationMins) || 0) * 6)} kcal</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setReviewingWorkoutLog(null)} 
+                className="flex-1 py-4 font-display uppercase tracking-widest text-sm text-concrete border border-concrete/20 rounded-xl hover:bg-concrete/10 transition-colors"
+              >
+                Voltar
+              </button>
+              <button 
+                onClick={() => {
+                  // Reconstruct date timestamp
+                  const [year, month, day] = reviewDate.split('-').map(Number);
+                  const [hours, minutes] = reviewTime.split(':').map(Number);
+                  let finalTimestamp = reviewingWorkoutLog.date;
+                  
+                  if (!isNaN(year) && !isNaN(hours)) {
+                    const newD = new Date();
+                    newD.setFullYear(year, month - 1, day);
+                    newD.setHours(hours, minutes, 0, 0);
+                    finalTimestamp = newD.getTime();
+                  }
+
+                  const durMs = (parseInt(reviewDurationMins) || Math.floor(reviewingWorkoutLog.durationMs / 60000)) * 60000;
+
+                  const finalizedLog = {
+                    ...reviewingWorkoutLog,
+                    name: reviewName || reviewingWorkoutLog.name,
+                    date: finalTimestamp,
+                    durationMs: durMs
+                  };
+
+                  setHistory(prev => [finalizedLog, ...prev]);
+                  setWorkoutSummary(finalizedLog);
+                  setReviewingWorkoutLog(null);
+                  setActiveWorkout(null);
+                  setRestTimer(null);
+                  setActiveTab("history");
+                }} 
+                className="flex-[2] py-4 font-display uppercase tracking-widest text-sm bg-white text-black rounded-xl hover:bg-concrete transition-colors flex items-center justify-center gap-2 shadow-xl shadow-white/10"
+              >
+                <Save size={18} />
+                Salvar Treino
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WORKOUT SUMMARY / STRAVA STYLE MODAL */}
+      {workoutSummary && (() => {
+        const handleShare = () => {
+          const prText = workoutSummary.prs && workoutSummary.prs.length > 0 
+            ? `\n🏆 ${workoutSummary.prs.length} Recordes Pessoais Quebrados!\n${workoutSummary.prs.map(pr => `- ${pr}`).join("\n")}` 
+            : "";
+          
+          const exText = workoutSummary.exercises.map(ex => {
+            const vol = ex.sets.reduce((acc, set) => acc + (parseFloat(set.weight) || 0) * (parseInt(set.reps) || 0), 0);
+            return `- ${ex.name} (${ex.sets.length} séries, ${vol}kg)`;
+          }).join("\n");
+
+          const text = `ZenLift: Treino "${workoutSummary.name}" Concluído! 🏋️‍♂️\n⏱️ ${Math.floor(workoutSummary.durationMs / 60000)} minutos\n⚖️ ${workoutSummary.volumeKg}kg levantados${prText}\n\nExercícios:\n${exText}`;
+          
+          if (navigator.share) {
+            navigator.share({
+              title: 'Meu Treino no ZenLift',
+              text: text
+            }).catch(console.error);
+          } else {
+            navigator.clipboard.writeText(text).then(() => {
+              alert("Resumo copiado para a área de transferência!");
+            }).catch(console.error);
+          }
+        };
+
+        return (
+          <div className="absolute inset-0 z-[70] bg-noturno flex flex-col overflow-y-auto animate-slide-up">
+            <div className="flex-none p-6 pb-2 border-b border-concrete/10 flex justify-between items-center sticky top-0 bg-noturno z-10">
+              <h2 className="font-display text-2xl uppercase text-vulcanico font-bold tracking-widest">Resumo do Treino</h2>
+              <button onClick={() => setWorkoutSummary(null)} className="text-concrete hover:text-white p-2">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="flex-1 p-6 flex flex-col gap-8 pb-24">
+              <div className="text-center flex flex-col gap-2">
+                <h1 className="font-display text-4xl text-white uppercase">{workoutSummary.name}</h1>
+                <p className="font-mono text-concrete">
+                  {new Date(workoutSummary.date).toLocaleDateString("pt-BR", { weekday: 'long', day: 'numeric', month: 'long' })}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-concrete/5 border border-concrete/10 p-6 rounded-2xl flex flex-col items-center justify-center text-center gap-2">
+                  <Clock size={24} className="text-concrete mb-1" />
+                  <span className="font-mono text-[10px] text-concrete uppercase tracking-widest">Tempo Ativo</span>
+                  <span className="font-display text-3xl text-white">{Math.floor(workoutSummary.durationMs / 60000)}<span className="text-sm text-concrete ml-1">min</span></span>
+                </div>
+                <div className="bg-concrete/5 border border-concrete/10 p-6 rounded-2xl flex flex-col items-center justify-center text-center gap-2">
+                  <Dumbbell size={24} className="text-concrete mb-1" />
+                  <span className="font-mono text-[10px] text-concrete uppercase tracking-widest">Volume Total</span>
+                  <span className="font-display text-3xl text-white">{workoutSummary.volumeKg}<span className="text-sm text-concrete ml-1">kg</span></span>
+                </div>
+              </div>
+
+              {/* Idle Time and Calories estimation */}
+              <div className="flex gap-4">
+                {workoutSummary.idleTimeMs !== undefined && workoutSummary.idleTimeMs > 0 && (
+                  <div className="flex-1 bg-black/40 border border-concrete/10 p-4 rounded-xl flex items-center justify-center gap-2 text-center">
+                    <span className="font-mono text-[9px] text-concrete uppercase">
+                      {Math.floor(workoutSummary.idleTimeMs / 60000)} min ociosos removidos
+                    </span>
+                  </div>
+                )}
+                <div className="flex-1 bg-vulcanico/10 border border-vulcanico/30 p-4 rounded-xl flex items-center justify-center gap-2 text-center">
+                  <span className="text-lg">🔥</span>
+                  <span className="font-mono text-[10px] text-white uppercase font-bold tracking-widest">
+                    ~{Math.round((workoutSummary.durationMs / 60000) * 6)} kcal
+                  </span>
+                </div>
+              </div>
+
+              {workoutSummary.prs && workoutSummary.prs.length > 0 && (
+                <div className="bg-vulcanico/10 border border-vulcanico/30 p-6 rounded-2xl flex flex-col gap-4">
+                  <div className="flex items-center gap-2 text-vulcanico">
+                    <span className="text-xl">🏆</span>
+                    <h3 className="font-display text-lg uppercase font-bold tracking-widest">Recordes Pessoais</h3>
+                  </div>
+                  <ul className="flex flex-col gap-2">
+                    {workoutSummary.prs.map((pr, idx) => (
+                      <li key={idx} className="font-mono text-xs text-white bg-vulcanico/20 p-3 rounded-xl border border-vulcanico/10 flex items-start gap-2">
+                        <span className="text-vulcanico mt-0.5">★</span> {pr}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-4">
+                <h3 className="font-display text-lg uppercase text-concrete tracking-widest border-b border-concrete/20 pb-2">Exercícios Realizados</h3>
+                <div className="flex flex-col gap-3">
+                  {workoutSummary.exercises.map((ex, idx) => {
+                    const vol = ex.sets.reduce((acc, set) => acc + (parseFloat(set.weight) || 0) * (parseInt(set.reps) || 0), 0);
+                    return (
+                      <div key={idx} className="bg-concrete/5 p-4 rounded-xl flex justify-between items-center border border-concrete/10">
+                        <div className="flex flex-col gap-1">
+                          <span className="font-display text-white uppercase">{ex.name}</span>
+                          <span className="font-mono text-[10px] text-concrete">{ex.sets.length} séries concluídas</span>
+                        </div>
+                        <div className="font-mono text-xs text-vulcanico font-bold">
+                          {vol} kg
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-noturno/90 backdrop-blur-md p-6 border-t border-concrete/10">
+              <button 
+                onClick={handleShare}
+                className="w-full bg-vulcanico text-noturno font-display uppercase tracking-widest py-4 rounded-xl text-lg font-bold flex justify-center items-center gap-3 hover:bg-white transition-colors"
+              >
+                Compartilhar Treino
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* SYNC CONTROL CENTER / AUTH MODAL */}
       {isAuthModalOpen && (
