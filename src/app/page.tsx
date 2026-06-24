@@ -1430,6 +1430,55 @@ export default function AppContainer() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [activeStopwatchSetId, activeStopwatchStartTime]);
 
+  // --------------------------------------------------------------------------
+  // WAKE LOCK API (Previne a tela de apagar durante o treino)
+  // --------------------------------------------------------------------------
+  const wakeLockRef = useRef<any>(null);
+
+  useEffect(() => {
+    const shouldKeepAwake = activeWorkout !== null && !activeWorkout.isPaused;
+
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator && shouldKeepAwake) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+          console.log('Screen Wake Lock is active');
+          wakeLockRef.current.addEventListener('release', () => {
+            console.log('Screen Wake Lock was released');
+          });
+        }
+      } catch (err: any) {
+        console.warn(`Wake Lock error: ${err.name}, ${err.message}`);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && shouldKeepAwake) {
+        requestWakeLock();
+      }
+    };
+
+    if (shouldKeepAwake) {
+      requestWakeLock();
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    } else {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release()
+          .then(() => { wakeLockRef.current = null; })
+          .catch(() => {});
+      }
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release()
+          .then(() => { wakeLockRef.current = null; })
+          .catch(() => {});
+      }
+    };
+  }, [activeWorkout !== null, activeWorkout?.isPaused]);
+
   // Format Elapsed Time (ms -> MM:SS)
   const formatTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000);
