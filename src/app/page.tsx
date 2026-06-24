@@ -23,10 +23,14 @@ import {
   CloudOff,
   RefreshCw,
   Database,
-  FileText
+  FileText,
+  AlertCircle,
+  AlertTriangle,
+  Upload
 } from "lucide-react";
 import { supabase } from "./supabase";
 import { User as SupabaseUser } from "@supabase/supabase-js";
+import { motion, AnimatePresence } from "framer-motion";
 
 // --- TYPES ---
 type Tab = "plans" | "exercises" | "history";
@@ -167,6 +171,27 @@ const defaultExercises: ExerciseDef[] = [
   { id: "e11", name: "Prancha Abdominal", muscle: "Core" }
 ];
 
+const muscleColors: Record<string, string> = {
+  Peito: "#FF4103",
+  Costas: "#A855F7",
+  Pernas: "#3B82F6",
+  Ombros: "#EAB308",
+  Braços: "#06B6D4",
+  Core: "#10B981",
+  Cardio: "#EC4899",
+  Outros: "#6B7280"
+};
+
+const nodePositions: Record<string, { x: number; y: number }> = {
+  Peito: { x: 150, y: 35 },
+  Costas: { x: 245, y: 80 },
+  Pernas: { x: 220, y: 175 },
+  Ombros: { x: 150, y: 200 },
+  Braços: { x: 80, y: 175 },
+  Core: { x: 55, y: 80 },
+  Outros: { x: 150, y: 120 }
+};
+
 const ToggleSwitch = ({ checked, onChange }: { checked: boolean, onChange: (c: boolean) => void }) => (
   <button
     type="button"
@@ -179,9 +204,76 @@ const ToggleSwitch = ({ checked, onChange }: { checked: boolean, onChange: (c: b
   </button>
 );
 
+// --- CUSTOM UI COMPONENTS ---
+const CustomSelect = ({ value, onChange, options, placeholder }: { value: string, onChange: (val: string) => void, options: {label: string, value: string}[], placeholder?: string }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(o => o.value === value);
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-noturno border-b border-concrete/30 py-2 font-display text-lg text-white text-left focus:outline-none focus:border-vulcanico transition-colors flex justify-between items-center"
+      >
+        <span className={!selectedOption ? "text-concrete" : ""}>{selectedOption ? selectedOption.label : (placeholder || "Selecione...")}</span>
+        <ChevronDown size={18} className={`text-concrete transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: 0.15 }}
+            className="absolute z-50 w-full mt-1 bg-grafite border border-concrete/10 rounded-xl shadow-xl overflow-hidden"
+          >
+            <div className="max-h-60 overflow-y-auto custom-scrollbar">
+              {options.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                  className={`w-full text-left px-4 py-3 font-display text-base transition-colors flex items-center justify-between
+                    ${value === opt.value ? 'bg-vulcanico/20 text-vulcanico' : 'text-white hover:bg-concrete/10'}
+                  `}
+                >
+                  {opt.label}
+                  {value === opt.value && <Check size={16} />}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 export default function AppContainer() {
   const [activeTab, setActiveTab] = useState<Tab>("plans");
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Custom UI States
+  const [toast, setToast] = useState<{message: string, type: 'success'|'error'|'info'} | null>(null);
+  const [confirmConfig, setConfirmConfig] = useState<{isOpen: boolean, message: string, onConfirm: () => void} | null>(null);
+
+  const showToast = (message: string, type: 'success'|'error'|'info' = 'info') => {
+    setToast({message, type});
+    setTimeout(() => setToast(null), 3500);
+  };
 
   // Core Persistent States
   const [exercises, setExercises] = useState<ExerciseDef[]>([]);
@@ -1591,9 +1683,9 @@ export default function AppContainer() {
       setExercises(prev => [...prev, ...parsedExs]);
       setImportText("");
       setIsImportModalOpen(false);
-      alert(`${parsedExs.length} exercícios importados com sucesso!`);
+      showToast(`${parsedExs.length} exercícios importados com sucesso!`, 'success');
     } else {
-      alert("Nenhum exercício válido foi encontrado. Verifique o formato e tente novamente.");
+      showToast("Nenhum exercício válido foi encontrado. Verifique o formato e tente novamente.", 'error');
     }
   };
 
@@ -2349,131 +2441,116 @@ export default function AppContainer() {
   };
 
   // Helper for UI grouping
-  const exercisesByMuscle = exercises.reduce((acc, ex) => {
+  const exercisesByMuscle = useMemo(() => exercises.reduce((acc, ex) => {
     if (!acc[ex.muscle]) acc[ex.muscle] = [];
     acc[ex.muscle].push(ex);
     return acc;
-  }, {} as Record<string, ExerciseDef[]>);
+  }, {} as Record<string, ExerciseDef[]>), [exercises]);
 
   // Search filter for exercise lists
-  const filteredExercises = exercises.filter(ex => 
+  const filteredExercises = useMemo(() => exercises.filter(ex => 
     ex.name.toLowerCase().includes(exerciseSearchQuery.toLowerCase()) || 
     ex.muscle.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
-  );
+  ), [exercises, exerciseSearchQuery]);
 
-  const filteredExercisesByMuscle = filteredExercises.reduce((acc, ex) => {
+  const filteredExercisesByMuscle = useMemo(() => filteredExercises.reduce((acc, ex) => {
     if (!acc[ex.muscle]) acc[ex.muscle] = [];
     acc[ex.muscle].push(ex);
     return acc;
-  }, {} as Record<string, ExerciseDef[]>);
+  }, {} as Record<string, ExerciseDef[]>), [filteredExercises]);
 
   const activePlan = plans.find(p => p.id === activePlanId);
 
   // --- STATS COMPUTATIONS ---
-  const filteredLogs = history.filter(log => {
-    const logDate = new Date(log.date);
-    const now = new Date();
-    const diffMs = now.getTime() - logDate.getTime();
-    if (statsPeriod === "week") return diffMs <= 7 * 24 * 60 * 60 * 1000;
-    if (statsPeriod === "month") return diffMs <= 30 * 24 * 60 * 60 * 1000;
-    if (statsPeriod === "year") return diffMs <= 365 * 24 * 60 * 60 * 1000;
-    return true;
-  });
-
-  const muscleColors: Record<string, string> = {
-    Peito: "#FF4103",
-    Costas: "#A855F7",
-    Pernas: "#3B82F6",
-    Ombros: "#EAB308",
-    Braços: "#06B6D4",
-    Core: "#10B981",
-    Cardio: "#EC4899",
-    Outros: "#6B7280"
-  };
-
-  const muscleSets: Record<string, number> = {};
-  let totalSetsAggregated = 0;
-  const connections: Record<string, number> = {};
-  const muscleTotalSets: Record<string, number> = {};
-
-  filteredLogs.forEach(log => {
-    const sessionMuscles = new Set<string>();
-    log.exercises.forEach(ex => {
-      const def = exerciseMapByName[ex.name];
-      const muscle = def?.muscle || "Outros";
-      const count = ex.sets.length;
-      
-      muscleSets[muscle] = (muscleSets[muscle] || 0) + count;
-      totalSetsAggregated += count;
-
-      sessionMuscles.add(muscle);
-      muscleTotalSets[muscle] = (muscleTotalSets[muscle] || 0) + count;
+  const statsData = useMemo(() => {
+    const filteredLogs = history.filter(log => {
+      const logDate = new Date(log.date);
+      const now = new Date();
+      const diffMs = now.getTime() - logDate.getTime();
+      if (statsPeriod === "week") return diffMs <= 7 * 24 * 60 * 60 * 1000;
+      if (statsPeriod === "month") return diffMs <= 30 * 24 * 60 * 60 * 1000;
+      if (statsPeriod === "year") return diffMs <= 365 * 24 * 60 * 60 * 1000;
+      return true;
     });
 
-    const musclesArr = Array.from(sessionMuscles);
-    for (let i = 0; i < musclesArr.length; i++) {
-      for (let j = i + 1; j < musclesArr.length; j++) {
-        const key = [musclesArr[i], musclesArr[j]].sort().join("-");
-        connections[key] = (connections[key] || 0) + 1;
-      }
-    }
-  });
+    const muscleSets: Record<string, number> = {};
+    let totalSetsAggregated = 0;
+    const connections: Record<string, number> = {};
+    const muscleTotalSets: Record<string, number> = {};
 
-  let accumulatedPercent = 0;
-  const donutSlices = Object.entries(muscleSets).map(([muscle, count]) => {
-    const percent = totalSetsAggregated > 0 ? (count / totalSetsAggregated) * 100 : 0;
-    const strokeDasharray = `${percent} 100`;
-    const strokeDashoffset = -accumulatedPercent;
-    accumulatedPercent += percent;
-    return {
-      muscle,
-      count,
-      percent,
-      strokeDasharray,
-      strokeDashoffset,
-      color: muscleColors[muscle] || "#6B7280"
-    };
-  });
+    filteredLogs.forEach(log => {
+      const sessionMuscles = new Set<string>();
+      log.exercises.forEach(ex => {
+        const def = exerciseMapByName[ex.name];
+        const muscle = def?.muscle || "Outros";
+        const count = ex.sets.length;
+        
+        muscleSets[muscle] = (muscleSets[muscle] || 0) + count;
+        totalSetsAggregated += count;
 
-  const nodePositions: Record<string, { x: number; y: number }> = {
-    Peito: { x: 150, y: 35 },
-    Costas: { x: 245, y: 80 },
-    Pernas: { x: 220, y: 175 },
-    Ombros: { x: 150, y: 200 },
-    Braços: { x: 80, y: 175 },
-    Core: { x: 55, y: 80 },
-    Outros: { x: 150, y: 120 }
-  };
-
-  const linesToDraw: { x1: number; y1: number; x2: number; y2: number; weight: number; key: string }[] = [];
-  Object.entries(connections).forEach(([key, weight]) => {
-    const [m1, m2] = key.split("-");
-    const pos1 = nodePositions[m1] || nodePositions["Outros"];
-    const pos2 = nodePositions[m2] || nodePositions["Outros"];
-    if (pos1 && pos2) {
-      linesToDraw.push({
-        x1: pos1.x,
-        y1: pos1.y,
-        x2: pos2.x,
-        y2: pos2.y,
-        weight,
-        key
+        sessionMuscles.add(muscle);
+        muscleTotalSets[muscle] = (muscleTotalSets[muscle] || 0) + count;
       });
-    }
-  });
 
-  const nodesToDraw = Object.entries(nodePositions).map(([muscle, pos]) => {
-    const sets = muscleTotalSets[muscle] || 0;
-    const radius = 6 + Math.min(10, sets / 3);
-    const color = muscleColors[muscle] || "#6B7280";
-    return {
-      muscle,
-      pos,
-      sets,
-      radius,
-      color
-    };
-  });
+      const musclesArr = Array.from(sessionMuscles);
+      for (let i = 0; i < musclesArr.length; i++) {
+        for (let j = i + 1; j < musclesArr.length; j++) {
+          const key = [musclesArr[i], musclesArr[j]].sort().join("-");
+          connections[key] = (connections[key] || 0) + 1;
+        }
+      }
+    });
+
+    let accumulatedPercent = 0;
+    const donutSlices = Object.entries(muscleSets).map(([muscle, count]) => {
+      const percent = totalSetsAggregated > 0 ? (count / totalSetsAggregated) * 100 : 0;
+      const strokeDasharray = `${percent} 100`;
+      const strokeDashoffset = -accumulatedPercent;
+      accumulatedPercent += percent;
+      return {
+        muscle,
+        count,
+        percent,
+        strokeDasharray,
+        strokeDashoffset,
+        color: muscleColors[muscle] || "#6B7280"
+      };
+    });
+
+    const linesToDraw: { x1: number; y1: number; x2: number; y2: number; weight: number; key: string }[] = [];
+    Object.entries(connections).forEach(([key, weight]) => {
+      const [m1, m2] = key.split("-");
+      const pos1 = nodePositions[m1] || nodePositions["Outros"];
+      const pos2 = nodePositions[m2] || nodePositions["Outros"];
+      if (pos1 && pos2) {
+        linesToDraw.push({
+          x1: pos1.x,
+          y1: pos1.y,
+          x2: pos2.x,
+          y2: pos2.y,
+          weight,
+          key
+        });
+      }
+    });
+
+    const nodesToDraw = Object.entries(nodePositions).map(([muscle, pos]) => {
+      const sets = muscleTotalSets[muscle] || 0;
+      const radius = 6 + Math.min(10, sets / 3);
+      const color = muscleColors[muscle] || "#6B7280";
+      return {
+        muscle,
+        pos,
+        sets,
+        radius,
+        color
+      };
+    });
+
+    return { filteredLogs, donutSlices, linesToDraw, nodesToDraw, totalSetsAggregated };
+  }, [history, statsPeriod, exerciseMapByName]);
+
+  const { filteredLogs, donutSlices, linesToDraw, nodesToDraw, totalSetsAggregated } = statsData;
 
   if (!isLoaded) {
     return (
@@ -2610,12 +2687,16 @@ export default function AppContainer() {
                 {editingExercise.thumbnailUrl && !editingExerciseThumbnailFile && (
                    <img src={editingExercise.thumbnailUrl} alt="Thumbnail" className="w-24 h-24 object-cover rounded-lg border border-concrete/20 mb-2" />
                 )}
-                <input 
-                  type="file" 
-                  accept="image/*"
-                  onChange={(e) => setEditingExerciseThumbnailFile(e.target.files?.[0] || null)}
-                  className="w-full text-xs text-concrete file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-[10px] file:font-mono file:uppercase file:font-bold file:bg-concrete/10 file:text-white hover:file:bg-concrete/20 transition-colors cursor-pointer"
-                />
+                <label className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-concrete/30 hover:border-vulcanico bg-concrete/5 hover:bg-vulcanico/10 py-4 rounded-xl cursor-pointer transition-colors text-concrete hover:text-white group">
+                  <Upload size={16} className="group-hover:text-vulcanico transition-colors" />
+                  <span className="font-mono text-[10px] uppercase tracking-wider">{editingExerciseThumbnailFile ? editingExerciseThumbnailFile.name : "Selecionar Imagem"}</span>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={(e) => setEditingExerciseThumbnailFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                </label>
               </div>
 
               <div className="flex flex-col gap-2 mt-2">
@@ -2623,12 +2704,16 @@ export default function AppContainer() {
                 {editingExercise.videoUrl && !editingExerciseVideoFile && (
                    <video src={editingExercise.videoUrl} className="w-full max-h-[200px] object-cover rounded-lg border border-concrete/20 mb-2 bg-black" controls />
                 )}
-                <input 
-                  type="file" 
-                  accept="video/*,image/gif"
-                  onChange={(e) => setEditingExerciseVideoFile(e.target.files?.[0] || null)}
-                  className="w-full text-xs text-concrete file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-[10px] file:font-mono file:uppercase file:font-bold file:bg-concrete/10 file:text-white hover:file:bg-concrete/20 transition-colors cursor-pointer"
-                />
+                <label className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-concrete/30 hover:border-vulcanico bg-concrete/5 hover:bg-vulcanico/10 py-4 rounded-xl cursor-pointer transition-colors text-concrete hover:text-white group">
+                  <Upload size={16} className="group-hover:text-vulcanico transition-colors" />
+                  <span className="font-mono text-[10px] uppercase tracking-wider">{editingExerciseVideoFile ? editingExerciseVideoFile.name : "Selecionar Vídeo/GIF"}</span>
+                  <input 
+                    type="file" 
+                    accept="video/*,image/gif"
+                    onChange={(e) => setEditingExerciseVideoFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                </label>
               </div>
             </div>
 
@@ -2656,11 +2741,15 @@ export default function AppContainer() {
                     <label className="font-mono text-concrete text-[10px] uppercase">Mecânica</label>
                     <ToggleSwitch checked={editingExercise.visibleFields?.includes('mechanicType') || false} onChange={(c) => toggleVisibleField('mechanicType', c)} />
                   </div>
-                  <select value={editingExercise.mechanicType || ""} onChange={(e) => setEditingExercise({...editingExercise, mechanicType: e.target.value})} className="w-full bg-noturno border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors">
-                    <option value="">Selecione...</option>
-                    <option value="Composto">Composto</option>
-                    <option value="Isolado">Isolado</option>
-                  </select>
+                  <CustomSelect
+                    value={editingExercise.mechanicType || ""}
+                    onChange={(val) => setEditingExercise({...editingExercise, mechanicType: val})}
+                    options={[
+                      {label: "Composto", value: "Composto"},
+                      {label: "Isolado", value: "Isolado"}
+                    ]}
+                    placeholder="Selecione..."
+                  />
                 </div>
               </div>
 
@@ -2677,12 +2766,16 @@ export default function AppContainer() {
                     <label className="font-mono text-concrete text-[10px] uppercase">Dificuldade</label>
                     <ToggleSwitch checked={editingExercise.visibleFields?.includes('difficultyLevel') || false} onChange={(c) => toggleVisibleField('difficultyLevel', c)} />
                   </div>
-                  <select value={editingExercise.difficultyLevel || ""} onChange={(e) => setEditingExercise({...editingExercise, difficultyLevel: e.target.value})} className="w-full bg-noturno border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors">
-                    <option value="">Selecione...</option>
-                    <option value="Iniciante">Iniciante</option>
-                    <option value="Intermediário">Intermediário</option>
-                    <option value="Avançado">Avançado</option>
-                  </select>
+                  <CustomSelect
+                    value={editingExercise.difficultyLevel || ""}
+                    onChange={(val) => setEditingExercise({...editingExercise, difficultyLevel: val})}
+                    options={[
+                      {label: "Iniciante", value: "Iniciante"},
+                      {label: "Intermediário", value: "Intermediário"},
+                      {label: "Avançado", value: "Avançado"}
+                    ]}
+                    placeholder="Selecione..."
+                  />
                 </div>
               </div>
 
@@ -3306,8 +3399,7 @@ export default function AppContainer() {
                       step={isWeight ? "0.5" : "1"}
                       value={modalTempValue || 0}
                       onChange={(e) => setModalTempValue(e.target.value)}
-                      className="w-full h-2 bg-concrete/20 rounded-lg appearance-none cursor-pointer accent-[#EF4444]"
-                      style={{ accentColor: "#EF4444" }}
+                      className="w-full h-2 bg-concrete/20 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-vulcanico [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(255,255,255,0.2)] hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
                     />
                     <div className="flex justify-between text-concrete font-mono text-[10px] mt-2 px-1">
                       <span>0</span>
@@ -3506,10 +3598,14 @@ export default function AppContainer() {
                       </div>
                       <button 
                         onClick={() => {
-                          if (confirm("Excluir este treino do plano?")) {
-                            handleRemoveWorkoutFromBuilder(editingWorkout.id);
-                            setEditingWorkoutId(null);
-                          }
+                          setConfirmConfig({
+                            isOpen: true,
+                            message: "Excluir este treino do plano?",
+                            onConfirm: () => {
+                              handleRemoveWorkoutFromBuilder(editingWorkout.id);
+                              setEditingWorkoutId(null);
+                            }
+                          });
                         }}
                         className="text-concrete hover:text-red-500 pb-2 transition-colors flex-none"
                         title="Excluir Treino"
@@ -5089,7 +5185,8 @@ export default function AppContainer() {
                     type="date" 
                     value={reviewDate}
                     onChange={e => setReviewDate(e.target.value)}
-                    className="w-full bg-noturno border-b border-concrete/30 py-2 font-mono text-sm text-white focus:outline-none focus:border-vulcanico transition-colors [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                    className="w-full bg-noturno/50 border border-concrete/20 rounded-xl px-4 py-3 font-mono text-sm text-white focus:outline-none focus:border-vulcanico transition-colors [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-70 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 hover:[&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    style={{ colorScheme: "dark" }}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -5098,7 +5195,8 @@ export default function AppContainer() {
                     type="time" 
                     value={reviewTime}
                     onChange={e => setReviewTime(e.target.value)}
-                    className="w-full bg-noturno border-b border-concrete/30 py-2 font-mono text-sm text-white focus:outline-none focus:border-vulcanico transition-colors [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                    className="w-full bg-noturno/50 border border-concrete/20 rounded-xl px-4 py-3 font-mono text-sm text-white focus:outline-none focus:border-vulcanico transition-colors [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-70 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 hover:[&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    style={{ colorScheme: "dark" }}
                   />
                 </div>
               </div>
@@ -5193,7 +5291,7 @@ export default function AppContainer() {
             }).catch(console.error);
           } else {
             navigator.clipboard.writeText(text).then(() => {
-              alert("Resumo copiado para a área de transferência!");
+              showToast("Resumo copiado para a área de transferência!", 'success');
             }).catch(console.error);
           }
         };
@@ -5421,6 +5519,66 @@ export default function AppContainer() {
           </div>
         </div>
       )}
+
+      {/* GLOBAL TOAST */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
+            className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-3 rounded-full flex items-center gap-2 shadow-2xl border ${
+              toast.type === 'success' ? 'bg-green-900/90 border-green-500/50 text-white' :
+              toast.type === 'error' ? 'bg-red-900/90 border-red-500/50 text-white' :
+              'bg-vulcanico border-white/20 text-noturno font-bold'
+            }`}
+          >
+            {toast.type === 'success' ? <Check size={16} /> : toast.type === 'error' ? <AlertTriangle size={16} /> : <AlertCircle size={16} />}
+            <span className="font-display text-sm whitespace-nowrap">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* GLOBAL CONFIRM DIALOG */}
+      <AnimatePresence>
+        {confirmConfig && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-noturno/80 backdrop-blur-sm"
+              onClick={() => setConfirmConfig(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-grafite border border-concrete/20 p-6 rounded-2xl shadow-2xl w-full max-w-sm relative z-10"
+            >
+              <h3 className="font-display text-xl text-white mb-2 uppercase tracking-widest">Confirmar Ação</h3>
+              <p className="text-concrete text-sm mb-6">{confirmConfig.message}</p>
+              <div className="flex gap-3 justify-end">
+                <button 
+                  onClick={() => setConfirmConfig(null)}
+                  className="px-4 py-2 font-mono text-xs uppercase tracking-wider text-concrete hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => {
+                    confirmConfig.onConfirm();
+                    setConfirmConfig(null);
+                  }}
+                  className="px-4 py-2 bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white font-mono text-xs uppercase tracking-wider rounded-lg transition-colors border border-red-500/30"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
