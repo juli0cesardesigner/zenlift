@@ -53,7 +53,10 @@ type ExerciseDef = {
   exerciseCategory?: string;
   visibleFields?: string[];
   isTimeBased?: boolean;
+  isRepsOnly?: boolean;
+  isDeleted?: boolean;
 };
+
 
 type PlannedSet = {
   id: string;
@@ -68,24 +71,28 @@ type PlannedSet = {
   restPauseSets?: number;
   restPauseSeconds?: number;
   failureType?: string;
+  isDeleted?: boolean;
 };
 
 type PlannedExercise = {
   id: string;
   exerciseId: string;
   sets: PlannedSet[];
+  isDeleted?: boolean;
 };
 
 type WorkoutTemplate = {
   id: string;
   name: string;
   exercises: PlannedExercise[];
+  isDeleted?: boolean;
 };
 
 type Plan = {
   id: string;
   name: string;
   workouts: WorkoutTemplate[];
+  isDeleted?: boolean;
 };
 
 type ActiveSet = {
@@ -154,6 +161,7 @@ type HistoryLog = {
       failureType?: string;
     }[];
   }[];
+  isDeleted?: boolean;
 };
 
 // --- INITIAL LIBRARY DATA ---
@@ -264,6 +272,7 @@ const CustomSelect = ({ value, onChange, options, placeholder }: { value: string
 
 export default function AppContainer() {
   const [activeTab, setActiveTab] = useState<Tab>("plans");
+  const [exerciseViewMode, setExerciseViewMode] = useState<"muscle" | "alphabetical">("muscle");
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Custom UI States
@@ -308,6 +317,11 @@ export default function AppContainer() {
     suggestedValue: string;
   } | null>(null);
   const [modalTempValue, setModalTempValue] = useState<string>("");
+  const [isEditingDirectly, setIsEditingDirectly] = useState(false);
+
+  useEffect(() => {
+    setIsEditingDirectly(false);
+  }, [activeInputModal]);
 
   const globalActiveSetId = useMemo(() => {
     if (!activeWorkout) return null;
@@ -397,14 +411,6 @@ export default function AppContainer() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
   const [lastSyncedTime, setLastSyncedTime] = useState<number | null>(null);
 
-  // Deletion tracking refs (useRef to avoid channel teardown on every delete)
-  const deletedPlanIdsRef = useRef<string[]>([]);
-  const deletedWorkoutIdsRef = useRef<string[]>([]);
-  const deletedPlannedExerciseIdsRef = useRef<string[]>([]);
-  const deletedPlannedSetIdsRef = useRef<string[]>([]);
-  const deletedExerciseIdsRef = useRef<string[]>([]);
-  const deletedHistoryIdsRef = useRef<string[]>([]);
-
   // Synced tracking refs (prevent resurrection of deleted items)
   const syncedPlanIdsRef = useRef<string[]>([]);
   const syncedExerciseIdsRef = useRef<string[]>([]);
@@ -415,38 +421,6 @@ export default function AppContainer() {
 
   // Broadcast channel ref (accessible from watchers)
   const broadcastChannelRef = useRef<any>(null);
-
-  // Helper to update deletedIds refs + persist to localStorage
-  const addDeletedPlanId = (id: string) => {
-    if (!deletedPlanIdsRef.current.includes(id)) {
-      deletedPlanIdsRef.current = [...deletedPlanIdsRef.current, id];
-      localStorage.setItem("is_deleted_plans_v1", JSON.stringify(deletedPlanIdsRef.current));
-    }
-  };
-
-  const addDeletedWorkoutIds = (ids: string[]) => {
-    const newIds = ids.filter(id => !deletedWorkoutIdsRef.current.includes(id));
-    if (newIds.length > 0) {
-      deletedWorkoutIdsRef.current = [...deletedWorkoutIdsRef.current, ...newIds];
-      localStorage.setItem("is_deleted_workouts_v1", JSON.stringify(deletedWorkoutIdsRef.current));
-    }
-  };
-
-  const addDeletedPlannedExerciseIds = (ids: string[]) => {
-    const newIds = ids.filter(id => !deletedPlannedExerciseIdsRef.current.includes(id));
-    if (newIds.length > 0) {
-      deletedPlannedExerciseIdsRef.current = [...deletedPlannedExerciseIdsRef.current, ...newIds];
-      localStorage.setItem("is_deleted_planned_exercises_v1", JSON.stringify(deletedPlannedExerciseIdsRef.current));
-    }
-  };
-
-  const addDeletedPlannedSetIds = (ids: string[]) => {
-    const newIds = ids.filter(id => !deletedPlannedSetIdsRef.current.includes(id));
-    if (newIds.length > 0) {
-      deletedPlannedSetIdsRef.current = [...deletedPlannedSetIdsRef.current, ...newIds];
-      localStorage.setItem("is_deleted_planned_sets_v1", JSON.stringify(deletedPlannedSetIdsRef.current));
-    }
-  };
 
   // Pre-compute an exercise map for O(1) lookups instead of O(N) .find() inside loops
   const exerciseMap = useMemo(() => {
@@ -462,18 +436,6 @@ export default function AppContainer() {
       return acc;
     }, {} as Record<string, ExerciseDef>);
   }, [exercises]);
-  const addDeletedExerciseId = (id: string) => {
-    if (!deletedExerciseIdsRef.current.includes(id)) {
-      deletedExerciseIdsRef.current = [...deletedExerciseIdsRef.current, id];
-      localStorage.setItem("is_deleted_exercises_v1", JSON.stringify(deletedExerciseIdsRef.current));
-    }
-  };
-  const addDeletedHistoryId = (id: string) => {
-    if (!deletedHistoryIdsRef.current.includes(id)) {
-      deletedHistoryIdsRef.current = [...deletedHistoryIdsRef.current, id];
-      localStorage.setItem("is_deleted_history_v1", JSON.stringify(deletedHistoryIdsRef.current));
-    }
-  };
 
   // Load state from local storage on mount
   useEffect(() => {
@@ -506,23 +468,7 @@ export default function AppContainer() {
     const storedFocused = localStorage.getItem("is_focused_exercises_v1");
     if (storedFocused) setFocusedExercises(JSON.parse(storedFocused));
 
-    const storedDeletedPlans = localStorage.getItem("is_deleted_plans_v1");
-    if (storedDeletedPlans) deletedPlanIdsRef.current = JSON.parse(storedDeletedPlans);
 
-    const storedDeletedWorkouts = localStorage.getItem("is_deleted_workouts_v1");
-    if (storedDeletedWorkouts) deletedWorkoutIdsRef.current = JSON.parse(storedDeletedWorkouts);
-
-    const storedDeletedPlannedExs = localStorage.getItem("is_deleted_planned_exercises_v1");
-    if (storedDeletedPlannedExs) deletedPlannedExerciseIdsRef.current = JSON.parse(storedDeletedPlannedExs);
-
-    const storedDeletedPlannedSets = localStorage.getItem("is_deleted_planned_sets_v1");
-    if (storedDeletedPlannedSets) deletedPlannedSetIdsRef.current = JSON.parse(storedDeletedPlannedSets);
-
-    const storedDeletedExercises = localStorage.getItem("is_deleted_exercises_v1");
-    if (storedDeletedExercises) deletedExerciseIdsRef.current = JSON.parse(storedDeletedExercises);
-
-    const storedDeletedHistory = localStorage.getItem("is_deleted_history_v1");
-    if (storedDeletedHistory) deletedHistoryIdsRef.current = JSON.parse(storedDeletedHistory);
 
     const storedSyncedPlans = localStorage.getItem("is_synced_plans_v1");
     if (storedSyncedPlans) syncedPlanIdsRef.current = JSON.parse(storedSyncedPlans);
@@ -550,21 +496,9 @@ export default function AppContainer() {
   }, []);
 
   // --- SUPABASE SYNCHRONIZATION HELPERS ---
-  const pushCustomExercisesToSupabase = async (userId: string, localExercises: ExerciseDef[], deletedIds: string[]) => {
+  const pushCustomExercisesToSupabase = async (userId: string, localExercises: ExerciseDef[]) => {
     try {
-      // 1. Delete explicitly deleted exercises from Supabase
-      if (deletedIds.length > 0) {
-        const { error: delErr } = await supabase
-          .from("exercises")
-          .delete()
-          .eq("user_id", userId)
-          .in("id", deletedIds);
-        if (delErr) throw delErr;
-        deletedExerciseIdsRef.current = deletedExerciseIdsRef.current.filter(id => !deletedIds.includes(id));
-        localStorage.setItem("is_deleted_exercises_v1", JSON.stringify(deletedExerciseIdsRef.current));
-      }
-
-      // 2. Upsert remaining custom exercises
+      // 1. Upsert custom exercises (including deleted ones)
       const customLocal = localExercises.filter(ex => ex.id.startsWith("ex_"));
       if (customLocal.length === 0) return;
 
@@ -586,12 +520,14 @@ export default function AppContainer() {
         difficulty_level: ex.difficultyLevel || null,
         exercise_category: ex.exerciseCategory || null,
         visible_fields: ex.visibleFields || [],
-        is_time_based: ex.isTimeBased || false
+        is_time_based: ex.isTimeBased || false,
+        is_reps_only: ex.isRepsOnly || false,
+        is_deleted: ex.isDeleted || false
       }));
       const { error: upErr } = await supabase.from("exercises").upsert(customToUpsert);
       if (upErr) throw upErr;
 
-      const upsertedIds = customLocal.map(ex => ex.id);
+      const upsertedIds = customLocal.filter(ex => !ex.isDeleted).map(ex => ex.id);
       const next = [...syncedExerciseIdsRef.current];
       upsertedIds.forEach(id => {
         if (!next.includes(id)) next.push(id);
@@ -607,8 +543,9 @@ export default function AppContainer() {
     try {
       const { data, error } = await supabase
         .from("exercises")
-        .select("id, name, muscle, video_url, thumbnail_url, secondary_muscles, mechanic_type, equipment, grip_type, stance, instructions, common_mistakes, breathing, difficulty_level, exercise_category, visible_fields")
-        .eq("user_id", userId);
+        .select("id, name, muscle, video_url, thumbnail_url, secondary_muscles, mechanic_type, equipment, grip_type, stance, instructions, common_mistakes, breathing, difficulty_level, exercise_category, visible_fields, is_time_based, is_reps_only")
+        .eq("user_id", userId)
+        .eq("is_deleted", false);
 
       if (error) throw error;
       if (!data) return [];
@@ -629,7 +566,8 @@ export default function AppContainer() {
         difficultyLevel: row.difficulty_level || undefined,
         exerciseCategory: row.exercise_category || undefined,
         visibleFields: row.visible_fields || [],
-        isTimeBased: row.is_time_based || false
+        isTimeBased: row.is_time_based || false,
+        isRepsOnly: row.is_reps_only || false
       }));
     } catch (e) {
       console.error("pullCustomExercisesFromSupabase error:", e);
@@ -639,59 +577,22 @@ export default function AppContainer() {
 
   const pushPlansToSupabase = async (
     userId: string,
-    localPlans: Plan[],
-    deletedIds: string[],
-    deletedWorkoutIds: string[],
-    deletedPlannedExerciseIds: string[],
-    deletedPlannedSetIds: string[]
+    localPlans: Plan[]
   ): Promise<boolean> => {
     try {
-      // 1. Delete items that are explicitly marked as deleted
-
-      // Delete sets
-      if (deletedPlannedSetIds.length > 0) {
-        const { error } = await supabase.from("planned_sets").delete().in("id", deletedPlannedSetIds);
-        if (error) throw error;
-        deletedPlannedSetIdsRef.current = deletedPlannedSetIdsRef.current.filter(id => !deletedPlannedSetIds.includes(id));
-        localStorage.setItem("is_deleted_planned_sets_v1", JSON.stringify(deletedPlannedSetIdsRef.current));
-      }
-
-      // Delete planned exercises
-      if (deletedPlannedExerciseIds.length > 0) {
-        const { error } = await supabase.from("planned_exercises").delete().in("id", deletedPlannedExerciseIds);
-        if (error) throw error;
-        deletedPlannedExerciseIdsRef.current = deletedPlannedExerciseIdsRef.current.filter(id => !deletedPlannedExerciseIds.includes(id));
-        localStorage.setItem("is_deleted_planned_exercises_v1", JSON.stringify(deletedPlannedExerciseIdsRef.current));
-      }
-
-      // Delete workouts
-      if (deletedWorkoutIds.length > 0) {
-        const { error } = await supabase.from("workouts").delete().in("id", deletedWorkoutIds);
-        if (error) throw error;
-        deletedWorkoutIdsRef.current = deletedWorkoutIdsRef.current.filter(id => !deletedWorkoutIds.includes(id));
-        localStorage.setItem("is_deleted_workouts_v1", JSON.stringify(deletedWorkoutIdsRef.current));
-      }
-
-      // Delete plans
-      if (deletedIds.length > 0) {
-        const { error } = await supabase.from("plans").delete().eq("user_id", userId).in("id", deletedIds);
-        if (error) throw error;
-        deletedPlanIdsRef.current = deletedPlanIdsRef.current.filter(id => !deletedIds.includes(id));
-        localStorage.setItem("is_deleted_plans_v1", JSON.stringify(deletedPlanIdsRef.current));
-      }
-
       if (localPlans.length === 0) return true;
 
-      // 2. Upsert remaining plans
+      // 1. Upsert plans
       const plansToUpsert = localPlans.map(p => ({
         id: p.id,
         name: p.name,
-        user_id: userId
+        user_id: userId,
+        is_deleted: p.isDeleted || false
       }));
       const { error: pErr } = await supabase.from("plans").upsert(plansToUpsert);
       if (pErr) throw pErr;
 
-      // 3. Upsert remaining workouts
+      // 2. Upsert workouts
       const workoutsToUpsert: any[] = [];
       localPlans.forEach(p => {
         p.workouts.forEach((w, wIdx) => {
@@ -700,7 +601,8 @@ export default function AppContainer() {
             plan_id: p.id,
             name: w.name,
             order_index: wIdx,
-            user_id: userId
+            user_id: userId,
+            is_deleted: w.isDeleted || p.isDeleted || false
           });
         });
       });
@@ -709,7 +611,7 @@ export default function AppContainer() {
         if (wErr) throw wErr;
       }
 
-      // 4. Upsert remaining planned exercises
+      // 3. Upsert planned exercises
       const peToUpsert: any[] = [];
       localPlans.forEach(p => {
         p.workouts.forEach(w => {
@@ -719,7 +621,8 @@ export default function AppContainer() {
               workout_id: w.id,
               exercise_id: pe.exerciseId,
               order_index: peIdx,
-              user_id: userId
+              user_id: userId,
+              is_deleted: pe.isDeleted || w.isDeleted || p.isDeleted || false
             });
           });
         });
@@ -729,7 +632,7 @@ export default function AppContainer() {
         if (peErr) throw peErr;
       }
 
-      // 5. Upsert remaining planned sets
+      // 4. Upsert planned sets
       const psToUpsert: any[] = [];
       localPlans.forEach(p => {
         p.workouts.forEach(w => {
@@ -750,7 +653,8 @@ export default function AppContainer() {
                 rest_pause_seconds: s.restPauseSeconds || null,
                 failure_type: s.failureType || null,
                 order_index: sIdx,
-                user_id: userId
+                user_id: userId,
+                is_deleted: s.isDeleted || pe.isDeleted || w.isDeleted || p.isDeleted || false
               });
             });
           });
@@ -761,7 +665,7 @@ export default function AppContainer() {
         if (psErr) throw psErr;
       }
 
-      const upsertedIds = localPlans.map(p => p.id);
+      const upsertedIds = localPlans.filter(p => !p.isDeleted).map(p => p.id);
       const next = [...syncedPlanIdsRef.current];
       upsertedIds.forEach(id => {
         if (!next.includes(id)) next.push(id);
@@ -782,55 +686,62 @@ export default function AppContainer() {
         .select(`
           id, name,
           workouts (
-            id, name, order_index,
+            id, name, order_index, is_deleted,
             planned_exercises (
-              id, exercise_id, order_index,
+              id, exercise_id, order_index, is_deleted,
               planned_sets (
                 id, min_reps, max_reps, rest_seconds, is_drop_set, is_to_failure,
-                method_type, custom_method_name, drop_count, rest_pause_sets, rest_pause_seconds, failure_type, order_index
+                method_type, custom_method_name, drop_count, rest_pause_sets, rest_pause_seconds, failure_type, order_index, is_deleted
               )
             )
           )
         `)
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .eq("is_deleted", false);
 
       if (error) throw error;
       if (!data) return [];
 
       return data.map((p: any) => {
-        const workouts = (p.workouts || []).map((w: any) => {
-          const exercises = (w.planned_exercises || []).map((pe: any) => {
-            const sets = (pe.planned_sets || []).map((s: any) => ({
-              id: s.id,
-              minReps: s.min_reps,
-              maxReps: s.max_reps,
-              restSeconds: s.rest_seconds,
-              isDropSet: s.is_drop_set,
-              isToFailure: s.is_to_failure,
-              methodType: s.method_type,
-              customMethodName: s.custom_method_name,
-              dropCount: s.drop_count,
-              restPauseSets: s.rest_pause_sets,
-              restPauseSeconds: s.rest_pause_seconds,
-              failureType: s.failure_type,
-              order_index: s.order_index
-            })).sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
+        const workouts = (p.workouts || [])
+          .filter((w: any) => !w.is_deleted)
+          .map((w: any) => {
+            const exercises = (w.planned_exercises || [])
+              .filter((pe: any) => !pe.is_deleted)
+              .map((pe: any) => {
+                const sets = (pe.planned_sets || [])
+                  .filter((s: any) => !s.is_deleted)
+                  .map((s: any) => ({
+                    id: s.id,
+                    minReps: s.min_reps,
+                    maxReps: s.max_reps,
+                    restSeconds: s.rest_seconds,
+                    isDropSet: s.is_drop_set,
+                    isToFailure: s.is_to_failure,
+                    methodType: s.method_type,
+                    customMethodName: s.custom_method_name,
+                    dropCount: s.drop_count,
+                    restPauseSets: s.rest_pause_sets,
+                    restPauseSeconds: s.rest_pause_seconds,
+                    failureType: s.failure_type,
+                    order_index: s.order_index
+                  })).sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
+
+                return {
+                  id: pe.id,
+                  exerciseId: pe.exercise_id,
+                  sets,
+                  order_index: pe.order_index
+                };
+              }).sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
 
             return {
-              id: pe.id,
-              exerciseId: pe.exercise_id,
-              sets,
-              order_index: pe.order_index
+              id: w.id,
+              name: w.name,
+              exercises,
+              order_index: w.order_index
             };
           }).sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
-
-          return {
-            id: w.id,
-            name: w.name,
-            exercises,
-            order_index: w.order_index
-          };
-        }).sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
 
         return {
           id: p.id,
@@ -844,23 +755,11 @@ export default function AppContainer() {
     }
   };
 
-  const pushHistoryToSupabase = async (userId: string, localHistory: HistoryLog[], deletedIds: string[]) => {
+  const pushHistoryToSupabase = async (userId: string, localHistory: HistoryLog[]) => {
     try {
-      // 1. Delete history logs that are explicitly marked as deleted
-      if (deletedIds.length > 0) {
-        const { error: delErr } = await supabase
-          .from("history_logs")
-          .delete()
-          .eq("user_id", userId)
-          .in("id", deletedIds);
-        if (delErr) throw delErr;
-        deletedHistoryIdsRef.current = deletedHistoryIdsRef.current.filter(id => !deletedIds.includes(id));
-        localStorage.setItem("is_deleted_history_v1", JSON.stringify(deletedHistoryIdsRef.current));
-      }
-
       if (localHistory.length === 0) return;
 
-      // 2. Upsert remaining history logs
+      // 1. Upsert history logs (including soft-deleted ones)
       const logsToUpsert = localHistory.map(log => ({
         id: log.id,
         user_id: userId,
@@ -869,14 +768,17 @@ export default function AppContainer() {
         duration_ms: log.durationMs,
         volume_kg: log.volumeKg,
         idle_time_ms: log.idleTimeMs || 0,
-        prs: log.prs || []
+        prs: log.prs || [],
+        is_deleted: log.isDeleted || false
       }));
       const { error: lErr } = await supabase.from("history_logs").upsert(logsToUpsert);
       if (lErr) throw lErr;
 
-      // 3. Upsert log exercises
+      // 2. Upsert log exercises and sets only for active (non-deleted) logs
+      const activeLogs = localHistory.filter(log => !log.isDeleted);
+
       const exercisesToUpsert: any[] = [];
-      localHistory.forEach(log => {
+      activeLogs.forEach(log => {
         log.exercises.forEach((ex, exIdx) => {
           const hleId = `hle_${log.id}_${exIdx}`;
           exercisesToUpsert.push({
@@ -893,9 +795,9 @@ export default function AppContainer() {
         if (exErr) throw exErr;
       }
 
-      // 4. Upsert log sets
+      // 3. Upsert log sets
       const setsToUpsert: any[] = [];
-      localHistory.forEach(log => {
+      activeLogs.forEach(log => {
         log.exercises.forEach((ex, exIdx) => {
           const hleId = `hle_${log.id}_${exIdx}`;
           ex.sets.forEach((s, sIdx) => {
@@ -925,7 +827,7 @@ export default function AppContainer() {
         if (sErr) throw sErr;
       }
 
-      const upsertedIds = localHistory.map(log => log.id);
+      const upsertedIds = activeLogs.map(log => log.id);
       const next = [...syncedHistoryIdsRef.current];
       upsertedIds.forEach(id => {
         if (!next.includes(id)) next.push(id);
@@ -951,7 +853,8 @@ export default function AppContainer() {
             )
           )
         `)
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .eq("is_deleted", false);
 
       if (error) throw error;
       if (!data) return [];
@@ -1041,11 +944,13 @@ export default function AppContainer() {
     setSyncStatus("syncing");
     try {
       // 1. Exercises
-      await pushCustomExercisesToSupabase(currentUser.id, exercises, deletedExerciseIdsRef.current);
+      await pushCustomExercisesToSupabase(currentUser.id, exercises);
       const pulledCustom = await pullCustomExercisesFromSupabase(currentUser.id);
       setExercises(prev => {
         const pulledIds = pulledCustom.map(pe => pe.id);
+        // Clean up soft-deleted exercises from local state
         const filteredPrev = prev.filter(ex => {
+          if (ex.isDeleted) return false;
           if (!ex.id.startsWith("ex_")) return true;
           const wasSynced = syncedExerciseIdsRef.current.includes(ex.id);
           const isPulled = pulledIds.includes(ex.id);
@@ -1055,7 +960,7 @@ export default function AppContainer() {
 
         const merged = [...filteredPrev];
         pulledCustom.forEach(pe => {
-          if (!merged.some(me => me.id === pe.id) && !deletedExerciseIdsRef.current.includes(pe.id)) {
+          if (!merged.some(me => me.id === pe.id)) {
             merged.push(pe);
           }
         });
@@ -1067,48 +972,60 @@ export default function AppContainer() {
       });
 
       // 2. Plans
-      const plansPushed = await pushPlansToSupabase(
-        currentUser.id,
-        plans,
-        deletedPlanIdsRef.current,
-        deletedWorkoutIdsRef.current,
-        deletedPlannedExerciseIdsRef.current,
-        deletedPlannedSetIdsRef.current
-      );
+      const plansPushed = await pushPlansToSupabase(currentUser.id, plans);
       if (plansPushed) {
         const pulledPlans = await pullPlansFromSupabase(currentUser.id);
-      setPlans(prev => {
-        const pulledIds = pulledPlans.map(pp => pp.id);
-        const filteredPrev = prev.filter(p => {
-          const wasSynced = syncedPlanIdsRef.current.includes(p.id);
-          const isPulled = pulledIds.includes(p.id);
-          if (wasSynced && !isPulled) return false;
-          return true;
-        });
+        setPlans(prev => {
+          const pulledIds = pulledPlans.map(pp => pp.id);
+          // Clean up soft-deleted plans and sub-elements from local state
+          const filteredPrev = prev
+            .filter(p => {
+              if (p.isDeleted) return false;
+              const wasSynced = syncedPlanIdsRef.current.includes(p.id);
+              const isPulled = pulledIds.includes(p.id);
+              if (wasSynced && !isPulled) return false;
+              return true;
+            })
+            .map(p => ({
+              ...p,
+              workouts: p.workouts
+                .filter(w => !w.isDeleted)
+                .map(w => ({
+                  ...w,
+                  exercises: w.exercises
+                    .filter(ex => !ex.isDeleted)
+                    .map(ex => ({
+                      ...ex,
+                      sets: ex.sets.filter(s => !s.isDeleted)
+                    }))
+                }))
+            }));
 
-        const merged = [...filteredPrev];
-        pulledPlans.forEach(pp => {
-          const idx = merged.findIndex(mp => mp.id === pp.id);
-          if (idx !== -1) {
-            merged[idx] = pp;
-          } else if (!deletedPlanIdsRef.current.includes(pp.id)) {
-            merged.push(pp);
-          }
-        });
+          const merged = [...filteredPrev];
+          pulledPlans.forEach(pp => {
+            const idx = merged.findIndex(mp => mp.id === pp.id);
+            if (idx !== -1) {
+              merged[idx] = pp;
+            } else {
+              merged.push(pp);
+            }
+          });
 
-        const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
-        syncedPlanIdsRef.current = newSyncedIds;
-        localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
-        return merged;
-      });
+          const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
+          syncedPlanIdsRef.current = newSyncedIds;
+          localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
+          return merged;
+        });
       }
 
       // 3. History Logs
-      await pushHistoryToSupabase(currentUser.id, history, deletedHistoryIdsRef.current);
+      await pushHistoryToSupabase(currentUser.id, history);
       const pulledHistory = await pullHistoryFromSupabase(currentUser.id);
       setHistory(prev => {
         const pulledIds = pulledHistory.map(ph => ph.id);
+        // Clean up soft-deleted history logs from local state
         const filteredPrev = prev.filter(log => {
+          if (log.isDeleted) return false;
           const wasSynced = syncedHistoryIdsRef.current.includes(log.id);
           const isPulled = pulledIds.includes(log.id);
           if (wasSynced && !isPulled) return false;
@@ -1117,7 +1034,7 @@ export default function AppContainer() {
 
         const merged = [...filteredPrev];
         pulledHistory.forEach(ph => {
-          if (!merged.some(mh => mh.id === ph.id) && !deletedHistoryIdsRef.current.includes(ph.id)) {
+          if (!merged.some(mh => mh.id === ph.id)) {
             merged.push(ph);
           }
         });
@@ -1184,19 +1101,35 @@ export default function AppContainer() {
             const pulledPlans = await pullPlansFromSupabase(user.id);
             setPlans((prev) => {
               const pulledIds = pulledPlans.map((pp) => pp.id);
-              const filteredPrev = prev.filter((p) => {
-                const wasSynced = syncedPlanIdsRef.current.includes(p.id);
-                const isPulled = pulledIds.includes(p.id);
-                if (wasSynced && !isPulled) return false;
-                return true;
-              });
+              const filteredPrev = prev
+                .filter(p => {
+                  if (p.isDeleted) return false;
+                  const wasSynced = syncedPlanIdsRef.current.includes(p.id);
+                  const isPulled = pulledIds.includes(p.id);
+                  if (wasSynced && !isPulled) return false;
+                  return true;
+                })
+                .map(p => ({
+                  ...p,
+                  workouts: p.workouts
+                    .filter(w => !w.isDeleted)
+                    .map(w => ({
+                      ...w,
+                      exercises: w.exercises
+                        .filter(ex => !ex.isDeleted)
+                        .map(ex => ({
+                          ...ex,
+                          sets: ex.sets.filter(s => !s.isDeleted)
+                        }))
+                    }))
+                }));
 
               const merged = [...filteredPrev];
               pulledPlans.forEach((pp) => {
                 const idx = merged.findIndex((mp) => mp.id === pp.id);
                 if (idx !== -1) {
                   merged[idx] = pp;
-                } else if (!deletedPlanIdsRef.current.includes(pp.id)) {
+                } else {
                   merged.push(pp);
                 }
               });
@@ -1212,7 +1145,8 @@ export default function AppContainer() {
             const pulledCustom = await pullCustomExercisesFromSupabase(user.id);
             setExercises((prev) => {
               const pulledIds = pulledCustom.map((pe) => pe.id);
-              const filteredPrev = prev.filter((ex) => {
+              const filteredPrev = prev.filter(ex => {
+                if (ex.isDeleted) return false;
                 if (!ex.id.startsWith("ex_")) return true;
                 const wasSynced = syncedExerciseIdsRef.current.includes(ex.id);
                 const isPulled = pulledIds.includes(ex.id);
@@ -1222,7 +1156,7 @@ export default function AppContainer() {
 
               const merged = [...filteredPrev];
               pulledCustom.forEach((pe) => {
-                if (!merged.some((me) => me.id === pe.id) && !deletedExerciseIdsRef.current.includes(pe.id)) {
+                if (!merged.some((me) => me.id === pe.id)) {
                   merged.push(pe);
                 }
               });
@@ -1238,7 +1172,8 @@ export default function AppContainer() {
             const pulledHistory = await pullHistoryFromSupabase(user.id);
             setHistory((prev) => {
               const pulledIds = pulledHistory.map((ph) => ph.id);
-              const filteredPrev = prev.filter((log) => {
+              const filteredPrev = prev.filter(log => {
+                if (log.isDeleted) return false;
                 const wasSynced = syncedHistoryIdsRef.current.includes(log.id);
                 const isPulled = pulledIds.includes(log.id);
                 if (wasSynced && !isPulled) return false;
@@ -1247,7 +1182,7 @@ export default function AppContainer() {
 
               const merged = [...filteredPrev];
               pulledHistory.forEach((ph) => {
-                if (!merged.some((mh) => mh.id === ph.id) && !deletedHistoryIdsRef.current.includes(ph.id)) {
+                if (!merged.some((mh) => mh.id === ph.id)) {
                   merged.push(ph);
                 }
               });
@@ -1344,7 +1279,7 @@ export default function AppContainer() {
     if (!isLoaded) return;
     localStorage.setItem("is_exercises_v3", JSON.stringify(exercises));
     if (user && !isSyncingFromRemoteRef.current) {
-      pushCustomExercisesToSupabase(user.id, exercises, deletedExerciseIdsRef.current).then(() => {
+      pushCustomExercisesToSupabase(user.id, exercises).then(() => {
         if (broadcastChannelRef.current) {
           broadcastChannelRef.current.send({
             type: "broadcast",
@@ -1362,11 +1297,7 @@ export default function AppContainer() {
     if (user && !isSyncingFromRemoteRef.current) {
       pushPlansToSupabase(
         user.id,
-        plans,
-        deletedPlanIdsRef.current,
-        deletedWorkoutIdsRef.current,
-        deletedPlannedExerciseIdsRef.current,
-        deletedPlannedSetIdsRef.current
+        plans
       ).then((success) => {
         if (success && broadcastChannelRef.current) {
           broadcastChannelRef.current.send({
@@ -1392,7 +1323,7 @@ export default function AppContainer() {
     if (!isLoaded) return;
     localStorage.setItem("is_history_v4", JSON.stringify(history));
     if (user && !isSyncingFromRemoteRef.current) {
-      pushHistoryToSupabase(user.id, history, deletedHistoryIdsRef.current).then(() => {
+      pushHistoryToSupabase(user.id, history).then(() => {
         if (broadcastChannelRef.current) {
           broadcastChannelRef.current.send({
             type: "broadcast",
@@ -1521,6 +1452,20 @@ export default function AppContainer() {
     }
     return () => cancelAnimationFrame(animationFrameId);
   }, [activeStopwatchSetId, activeStopwatchStartTime]);
+
+  // Auto-scroll active exercise to top when rest timer ends or is skipped
+  const prevRestTimerRef = useRef<any>(null);
+  useEffect(() => {
+    if (prevRestTimerRef.current && !restTimer && activeWorkout) {
+      setTimeout(() => {
+        const activeExEl = document.querySelector('[data-active-exercise="true"]');
+        if (activeExEl) {
+          activeExEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 100);
+    }
+    prevRestTimerRef.current = restTimer;
+  }, [restTimer, activeWorkout]);
 
   // --------------------------------------------------------------------------
   // WAKE LOCK API (Previne a tela de apagar durante o treino)
@@ -1748,10 +1693,7 @@ export default function AppContainer() {
       message: "Deseja realmente excluir este exercício da biblioteca?",
       confirmText: "Excluir",
       onConfirm: () => {
-        setExercises(prev => prev.filter(ex => ex.id !== id));
-        if (id.startsWith("ex_")) {
-          addDeletedExerciseId(id);
-        }
+        setExercises(prev => prev.map(ex => ex.id === id ? { ...ex, isDeleted: true } : ex));
       }
     });
   };
@@ -1792,26 +1734,83 @@ export default function AppContainer() {
       if (idx !== -1) {
         const oldPlan = prev[idx];
 
-        // Find deleted workouts
-        const oldWorkoutIds = oldPlan.workouts.map(w => w.id);
-        const newWorkoutIds = editingPlan.workouts.map(w => w.id);
-        const deletedWorkouts = oldWorkoutIds.filter(id => !newWorkoutIds.includes(id));
-        if (deletedWorkouts.length > 0) addDeletedWorkoutIds(deletedWorkouts);
+        const mergedWorkouts: WorkoutTemplate[] = [];
 
-        // Find deleted planned exercises
-        const oldExerciseIds = oldPlan.workouts.flatMap(w => w.exercises.map(e => e.id));
-        const newExerciseIds = editingPlan.workouts.flatMap(w => w.exercises.map(e => e.id));
-        const deletedExercises = oldExerciseIds.filter(id => !newExerciseIds.includes(id));
-        if (deletedExercises.length > 0) addDeletedPlannedExerciseIds(deletedExercises);
+        // 1. Process workouts that are in the new editing plan
+        editingPlan.workouts.forEach(newW => {
+          const oldW = oldPlan.workouts.find(w => w.id === newW.id);
+          if (!oldW) {
+            mergedWorkouts.push(newW);
+          } else {
+            const mergedExercises: PlannedExercise[] = [];
 
-        // Find deleted planned sets
-        const oldSetIds = oldPlan.workouts.flatMap(w => w.exercises.flatMap(e => e.sets.map(s => s.id)));
-        const newSetIds = editingPlan.workouts.flatMap(w => w.exercises.flatMap(e => e.sets.map(s => s.id)));
-        const deletedSets = oldSetIds.filter(id => !newSetIds.includes(id));
-        if (deletedSets.length > 0) addDeletedPlannedSetIds(deletedSets);
+            // 1.1 Process exercises in the new workout
+            newW.exercises.forEach(newEx => {
+              const oldEx = oldW.exercises.find(e => e.id === newEx.id);
+              if (!oldEx) {
+                mergedExercises.push(newEx);
+              } else {
+                const mergedSets: PlannedSet[] = [];
+
+                // Process sets in new exercise
+                newEx.sets.forEach(newS => {
+                  mergedSets.push(newS);
+                });
+
+                // Find deleted sets in this exercise
+                oldEx.sets.forEach(oldS => {
+                  if (!newEx.sets.some(s => s.id === oldS.id)) {
+                    mergedSets.push({ ...oldS, isDeleted: true });
+                  }
+                });
+
+                mergedExercises.push({
+                  ...newEx,
+                  sets: mergedSets
+                });
+              }
+            });
+
+            // 1.2 Find deleted exercises in this workout
+            oldW.exercises.forEach(oldEx => {
+              if (!newW.exercises.some(e => e.id === oldEx.id)) {
+                mergedExercises.push({
+                  ...oldEx,
+                  isDeleted: true,
+                  sets: oldEx.sets.map(s => ({ ...s, isDeleted: true }))
+                });
+              }
+            });
+
+            mergedWorkouts.push({
+              ...newW,
+              exercises: mergedExercises
+            });
+          }
+        });
+
+        // 2. Process workouts that were deleted from the plan
+        oldPlan.workouts.forEach(oldW => {
+          if (!editingPlan.workouts.some(w => w.id === oldW.id)) {
+            mergedWorkouts.push({
+              ...oldW,
+              isDeleted: true,
+              exercises: oldW.exercises.map(ex => ({
+                ...ex,
+                isDeleted: true,
+                sets: ex.sets.map(s => ({ ...s, isDeleted: true }))
+              }))
+            });
+          }
+        });
+
+        const finalPlan = {
+          ...editingPlan,
+          workouts: mergedWorkouts
+        };
 
         const copy = [...prev];
-        copy[idx] = editingPlan;
+        copy[idx] = finalPlan;
         return copy;
       } else {
         return [...prev, editingPlan];
@@ -1828,8 +1827,7 @@ export default function AppContainer() {
       message: "Deseja realmente excluir este plano?",
       confirmText: "Excluir",
       onConfirm: () => {
-        setPlans(prev => prev.filter(p => p.id !== planId));
-        addDeletedPlanId(planId);
+        setPlans(prev => prev.map(p => p.id === planId ? { ...p, isDeleted: true } : p));
         if (activePlanId === planId) {
           setActivePlanId(null);
         }
@@ -2037,7 +2035,7 @@ export default function AppContainer() {
         if (exDef) {
           const performances: { weight: number, reps: number, date: number }[] = [];
           
-          history.forEach(log => {
+          history.filter(log => !log.isDeleted).forEach(log => {
             log.exercises.forEach(he => {
               if (he.name === exDef.name) {
                 let maxW = 0;
@@ -2281,6 +2279,40 @@ export default function AppContainer() {
   };
 
   const [addingExerciseToActiveWorkout, setAddingExerciseToActiveWorkout] = useState(false);
+  const [replacingActiveExerciseId, setReplacingActiveExerciseId] = useState<string | null>(null);
+
+  const handleReplaceExerciseInActiveWorkout = (newExerciseDef: ExerciseDef) => {
+    if (!activeWorkout || !replacingActiveExerciseId) return;
+
+    setActiveWorkout(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        lastInteractionTime: Date.now(),
+        exercises: prev.exercises.map(ex => {
+          if (ex.id !== replacingActiveExerciseId) return ex;
+
+          // Reset set inputs but preserve targets and methods
+          const updatedSets = ex.sets.map(s => ({
+            ...s,
+            completed: false,
+            weight: "",
+            reps: ""
+          }));
+
+          return {
+            ...ex,
+            exerciseId: newExerciseDef.id,
+            elapsedSeconds: 0,
+            sets: updatedSets,
+            overloadSuggestion: undefined
+          };
+        })
+      };
+    });
+
+    setReplacingActiveExerciseId(null);
+  };
 
   const handleAddExerciseToActiveWorkout = (exerciseDef: ExerciseDef) => {
     if (!activeWorkout) return;
@@ -2357,7 +2389,7 @@ export default function AppContainer() {
         });
 
         let historyMaxW = 0;
-        history.forEach(log => {
+        history.filter(log => !log.isDeleted).forEach(log => {
           log.exercises.forEach(he => {
             if (he.name === ce.name) {
               he.sets.forEach(hs => {
@@ -2423,8 +2455,7 @@ export default function AppContainer() {
       confirmText: "Excluir",
       cancelText: "Cancelar",
       onConfirm: () => {
-        setHistory(prev => prev.filter(log => log.id !== logId));
-        addDeletedHistoryId(logId);
+        setHistory(prev => prev.map(log => log.id === logId ? { ...log, isDeleted: true } : log));
       }
     });
   };
@@ -2441,30 +2472,74 @@ export default function AppContainer() {
     });
   };
 
-  // Helper for UI grouping
-  const exercisesByMuscle = useMemo(() => exercises.reduce((acc, ex) => {
-    if (!acc[ex.muscle]) acc[ex.muscle] = [];
-    acc[ex.muscle].push(ex);
-    return acc;
-  }, {} as Record<string, ExerciseDef[]>), [exercises]);
+  // Helper for UI grouping (alphabetically sorted muscle categories and exercise names)
+  const exercisesByMuscle = useMemo(() => {
+    const grouped = exercises.filter(ex => !ex.isDeleted).reduce((acc, ex) => {
+      if (!acc[ex.muscle]) acc[ex.muscle] = [];
+      acc[ex.muscle].push(ex);
+      return acc;
+    }, {} as Record<string, ExerciseDef[]>);
+
+    // Sort exercises within each group alphabetically
+    Object.keys(grouped).forEach(muscle => {
+      grouped[muscle].sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    // Sort muscle groups alphabetically
+    const sortedGrouped: Record<string, ExerciseDef[]> = {};
+    Object.keys(grouped).sort().forEach(muscle => {
+      sortedGrouped[muscle] = grouped[muscle];
+    });
+
+    return sortedGrouped;
+  }, [exercises]);
 
   // Search filter for exercise lists
-  const filteredExercises = useMemo(() => exercises.filter(ex => 
+  const filteredExercises = useMemo(() => exercises.filter(ex => !ex.isDeleted).filter(ex => 
     ex.name.toLowerCase().includes(exerciseSearchQuery.toLowerCase()) || 
     ex.muscle.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
   ), [exercises, exerciseSearchQuery]);
 
-  const filteredExercisesByMuscle = useMemo(() => filteredExercises.reduce((acc, ex) => {
-    if (!acc[ex.muscle]) acc[ex.muscle] = [];
-    acc[ex.muscle].push(ex);
-    return acc;
-  }, {} as Record<string, ExerciseDef[]>), [filteredExercises]);
+  const filteredExercisesByMuscle = useMemo(() => {
+    const grouped = filteredExercises.reduce((acc, ex) => {
+      if (!acc[ex.muscle]) acc[ex.muscle] = [];
+      acc[ex.muscle].push(ex);
+      return acc;
+    }, {} as Record<string, ExerciseDef[]>);
 
-  const activePlan = plans.find(p => p.id === activePlanId);
+    // Sort exercises within each group alphabetically
+    Object.keys(grouped).forEach(muscle => {
+      grouped[muscle].sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    // Sort muscle groups alphabetically
+    const sortedGrouped: Record<string, ExerciseDef[]> = {};
+    Object.keys(grouped).sort().forEach(muscle => {
+      sortedGrouped[muscle] = grouped[muscle];
+    });
+
+    return sortedGrouped;
+  }, [filteredExercises]);
+
+  // Flat alphabetical selectors
+  const sortedExercisesFlat = useMemo(() => {
+    return exercises.filter(ex => !ex.isDeleted).sort((a, b) => a.name.localeCompare(b.name));
+  }, [exercises]);
+
+  const filteredExercisesFlat = useMemo(() => {
+    return filteredExercises.sort((a, b) => a.name.localeCompare(b.name));
+  }, [filteredExercises]);
+
+  const activePlan = plans.find(p => p.id === activePlanId && !p.isDeleted);
+  const activePlanWorkouts = useMemo(() => {
+    if (!activePlan) return [];
+    return activePlan.workouts.filter(w => !w.isDeleted);
+  }, [activePlan]);
 
   // --- STATS COMPUTATIONS ---
   const statsData = useMemo(() => {
     const filteredLogs = history.filter(log => {
+      if (log.isDeleted) return false;
       const logDate = new Date(log.date);
       const now = new Date();
       const diffMs = now.getTime() - logDate.getTime();
@@ -2562,7 +2637,7 @@ export default function AppContainer() {
   }
 
   // --- ZERADO STATE (IF NO PLANS AT ALL AND NOT BUILDING) ---
-  const isZerado = plans.length === 0 && !editingPlan && !activeWorkout;
+  const isZerado = plans.filter(p => !p.isDeleted).length === 0 && !editingPlan && !activeWorkout;
 
   if (isZerado) {
     return (
@@ -2726,9 +2801,16 @@ export default function AppContainer() {
                 <div className="flex flex-col gap-1 bg-vulcanico/10 p-3 rounded-lg border border-vulcanico/30">
                   <div className="flex justify-between items-center">
                     <label className="font-mono text-white text-[10px] uppercase font-bold tracking-widest">Apenas Tempo (Sem Carga)</label>
-                    <ToggleSwitch checked={editingExercise.isTimeBased || false} onChange={(c) => setEditingExercise({...editingExercise, isTimeBased: c})} />
+                    <ToggleSwitch checked={editingExercise.isTimeBased || false} onChange={(c) => setEditingExercise({...editingExercise, isTimeBased: c, isRepsOnly: c ? false : (editingExercise.isRepsOnly || false)})} />
                   </div>
                   <p className="font-mono text-[9px] text-concrete/80 leading-relaxed mt-1">Se ativado, este exercício não pedirá peso/repetições e exibirá um cronômetro na tela de treino.</p>
+                </div>
+                <div className="flex flex-col gap-1 bg-vulcanico/10 p-3 rounded-lg border border-vulcanico/30">
+                  <div className="flex justify-between items-center">
+                    <label className="font-mono text-white text-[10px] uppercase font-bold tracking-widest">Apenas Repetições (Sem Carga)</label>
+                    <ToggleSwitch checked={editingExercise.isRepsOnly || false} onChange={(c) => setEditingExercise({...editingExercise, isRepsOnly: c, isTimeBased: c ? false : (editingExercise.isTimeBased || false)})} />
+                  </div>
+                  <p className="font-mono text-[9px] text-concrete/80 leading-relaxed mt-1">Se ativado, este exercício não pedirá peso (ocultando a coluna de carga) e focará apenas em repetições.</p>
                 </div>
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center">
@@ -2988,6 +3070,7 @@ export default function AppContainer() {
                   return (
                     <div 
                       key={ae.id} 
+                      data-active-exercise={aeIdx === resolvedActiveExerciseIndex}
                       className="flex flex-col relative transition-all duration-500"
                       style={
                         isQueued && isWorkoutMinimized
@@ -3001,14 +3084,25 @@ export default function AppContainer() {
                               <h3 className="font-display text-2xl uppercase text-vulcanico leading-tight">
                                 {exDef?.name || "Desconhecido"}
                               </h3>
-                              {distance === 0 && !isExerciseCompleted && activeWorkout.exercises.length > 1 && (
-                                <button 
-                                  onClick={() => handleSkipExercise(ae.id)}
-                                  className="text-[9px] font-mono uppercase bg-concrete/10 hover:bg-concrete/20 text-concrete hover:text-white px-2 py-1 rounded border border-concrete/20 transition-colors"
-                                  title="Pular para o fim da lista"
-                                >
-                                  Pular
-                                </button>
+                              {!isExerciseCompleted && (
+                                <div className="flex gap-1.5">
+                                  {distance === 0 && activeWorkout.exercises.length > 1 && (
+                                    <button 
+                                      onClick={() => handleSkipExercise(ae.id)}
+                                      className="text-[9px] font-mono uppercase bg-concrete/10 hover:bg-concrete/20 text-concrete hover:text-white px-2 py-1 rounded border border-concrete/20 transition-colors"
+                                      title="Pular para o fim da lista"
+                                    >
+                                      Pular
+                                    </button>
+                                  )}
+                                  <button 
+                                    onClick={() => setReplacingActiveExerciseId(ae.id)}
+                                    className="text-[9px] font-mono uppercase bg-concrete/10 hover:bg-concrete/20 text-vulcanico hover:text-white px-2 py-1 rounded border border-concrete/20 transition-colors"
+                                    title="Substituir por outro exercício"
+                                  >
+                                    Substituir
+                                  </button>
+                                </div>
                               )}
                             </div>
                             {exDef?.videoUrl && !isQueued && (
@@ -3091,8 +3185,14 @@ export default function AppContainer() {
                         <div className="grid grid-cols-12 font-mono text-[10px] text-concrete uppercase mb-2 text-center font-bold">
                           <div className="col-span-2">Série</div>
                           <div className="col-span-3">(Reps)</div>
-                          <div className="col-span-3">Carga (kg)</div>
-                          <div className="col-span-2">Reps</div>
+                          {exDef?.isRepsOnly ? (
+                            <div className="col-span-5">Reps</div>
+                          ) : (
+                            <>
+                              <div className="col-span-3">Carga (kg)</div>
+                              <div className="col-span-2">Reps</div>
+                            </>
+                          )}
                           <div className="col-span-2">Feito</div>
                         </div>
 
@@ -3182,6 +3282,27 @@ export default function AppContainer() {
                                           <span className="text-[10px] uppercase tracking-widest font-bold">Iniciar</span>
                                         </>
                                       )}
+                                    </button>
+                                  </div>
+                                ) : exDef?.isRepsOnly ? (
+                                  <div className="col-span-5 px-1">
+                                    <button 
+                                      onClick={() => {
+                                        if (!set.completed) {
+                                          setActiveInputModal({
+                                            exerciseId: ae.id,
+                                            setId: set.id,
+                                            field: "reps",
+                                            initialValue: set.reps,
+                                            suggestedValue: set.suggestedReps || ""
+                                          });
+                                          setModalTempValue(set.reps || set.suggestedReps || "0");
+                                        }
+                                      }}
+                                      className={`w-full bg-transparent border-b border-concrete/30 text-center font-mono text-lg focus:outline-none py-0.5 min-h-[32px] ${!set.reps && set.suggestedReps ? 'text-concrete/70' : 'text-white'}`}
+                                      disabled={set.completed}
+                                    >
+                                      {set.reps || set.suggestedReps || "0"}
                                     </button>
                                   </div>
                                 ) : (
@@ -3353,6 +3474,19 @@ export default function AppContainer() {
           {activeInputModal && (() => {
             const isWeight = activeInputModal.field === "weight";
             
+            // Zoom logic for slider range
+            const baseValue = parseFloat(activeInputModal.initialValue || activeInputModal.suggestedValue || "0") || 40;
+            const stableMin = Math.max(0, baseValue - 10);
+            const stableMax = baseValue + 10;
+            const currentVal = parseFloat(modalTempValue) || 0;
+
+            const minVal = isWeight 
+              ? (currentVal < stableMin ? Math.max(0, currentVal - 10) : stableMin) 
+              : 0;
+            const maxVal = isWeight 
+              ? (currentVal > stableMax ? currentVal + 10 : stableMax) 
+              : 50;
+
             const handleQuickAction = (val: number) => {
               const current = parseFloat(modalTempValue) || 0;
               const next = Math.max(0, current + val);
@@ -3385,37 +3519,61 @@ export default function AppContainer() {
 
                   {/* Big Number Display */}
                   <div className="flex flex-col items-center justify-center py-4">
-                    <span className="font-mono text-8xl text-white font-bold tracking-tighter tabular-nums drop-shadow-[0_0_15px_rgba(255,255,255,0.15)]">
-                      {modalTempValue || "0"}
-                      <span className="text-3xl text-concrete ml-2 font-normal">{isWeight ? "kg" : "reps"}</span>
-                    </span>
+                    {isEditingDirectly ? (
+                      <div className="flex items-baseline justify-center border-b-2 border-vulcanico pb-1 animate-fade-in">
+                        <input
+                          type="number"
+                          step={isWeight ? "0.5" : "1"}
+                          value={modalTempValue}
+                          onChange={(e) => setModalTempValue(e.target.value)}
+                          onBlur={() => setIsEditingDirectly(false)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleConfirm();
+                          }}
+                          autoFocus
+                          className="font-mono text-7xl text-white font-bold bg-transparent text-center focus:outline-none w-44"
+                        />
+                        <span className="text-3xl text-concrete ml-2 font-normal">{isWeight ? "kg" : "reps"}</span>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => setIsEditingDirectly(true)}
+                        className="font-mono text-8xl text-white font-bold tracking-tighter tabular-nums drop-shadow-[0_0_15px_rgba(255,255,255,0.15)] focus:outline-none hover:text-vulcanico transition-colors flex items-baseline justify-center w-full"
+                        title="Clique para digitar"
+                      >
+                        {modalTempValue || "0"}
+                        <span className="text-3xl text-concrete ml-2 font-normal">{isWeight ? "kg" : "reps"}</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Slider */}
                   <div className="w-full px-2 mt-4">
                     <input 
                       type="range" 
-                      min="0" 
-                      max={isWeight ? "200" : "50"} 
+                      min={minVal.toString()} 
+                      max={maxVal.toString()} 
                       step={isWeight ? "0.5" : "1"}
                       value={modalTempValue || 0}
                       onChange={(e) => setModalTempValue(e.target.value)}
                       className="w-full h-2 bg-concrete/20 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-vulcanico [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(255,255,255,0.2)] hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
                     />
                     <div className="flex justify-between text-concrete font-mono text-[10px] mt-2 px-1">
-                      <span>0</span>
-                      <span>{isWeight ? "200" : "50"}</span>
+                      <span>{minVal}</span>
+                      <span>{maxVal}</span>
                     </div>
                   </div>
 
                   {/* Quick Actions */}
-                  <div className="grid grid-cols-4 gap-3 mt-4">
+                  <div className={isWeight ? "grid grid-cols-6 gap-2 mt-4" : "grid grid-cols-4 gap-3 mt-4"}>
                     {isWeight ? (
                       <>
-                        <button onClick={() => handleQuickAction(-5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">-5</button>
-                        <button onClick={() => handleQuickAction(-2.5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">-2.5</button>
-                        <button onClick={() => handleQuickAction(2.5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">+2.5</button>
-                        <button onClick={() => handleQuickAction(5)} className="bg-vulcanico/20 text-vulcanico border border-vulcanico/30 py-3 rounded-xl font-mono text-sm hover:bg-vulcanico/30 hover:text-vulcanico active:scale-95 transition-all">+5</button>
+                        <button onClick={() => handleQuickAction(-10)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">-10</button>
+                        <button onClick={() => handleQuickAction(-5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">-5</button>
+                        <button onClick={() => handleQuickAction(-2.5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">-2.5</button>
+                        <button onClick={() => handleQuickAction(2.5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">+2.5</button>
+                        <button onClick={() => handleQuickAction(5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">+5</button>
+                        <button onClick={() => handleQuickAction(10)} className="bg-vulcanico/20 text-vulcanico border border-vulcanico/30 py-3 rounded-xl font-mono text-[10px] hover:bg-vulcanico/30 hover:text-vulcanico active:scale-95 transition-all font-bold">+10</button>
                       </>
                     ) : (
                       <>
@@ -3462,12 +3620,32 @@ export default function AppContainer() {
                 <span className="font-mono text-6xl md:text-7xl font-bold tracking-tight text-white tabular-nums drop-shadow-[0_0_15px_rgba(255,255,255,0.15)]">
                   {formatRestTime(restRemainingMs)}
                 </span>
-                <div className="w-48 bg-concrete/20 h-1.5 rounded-full overflow-hidden mt-6">
+                <div className="w-48 bg-concrete/20 h-1.5 rounded-full overflow-hidden mt-6 mb-8">
                   <div 
                     className="bg-vulcanico h-full transition-all duration-100 ease-out"
                     style={{ width: `${Math.min(100, (restRemainingMs / (restTimer.duration * 1000)) * 100)}%` }}
                   />
                 </div>
+
+                {restTimer.nextExerciseName && (
+                  <div className="w-full max-w-[280px] bg-white/5 border border-white/10 rounded-2xl p-4 text-center backdrop-blur-sm shadow-xl animate-fade-in">
+                    <span className="font-mono text-[9px] text-vulcanico uppercase tracking-widest font-bold mb-1.5 block">
+                      Próximo Exercício
+                    </span>
+                    <h3 className="font-display text-base uppercase text-white font-semibold leading-tight">
+                      {restTimer.nextExerciseName}
+                    </h3>
+                    {restTimer.nextExerciseLastWeight ? (
+                      <span className="font-mono text-[10px] text-concrete uppercase tracking-wider mt-2 block">
+                        Carga Sugerida: <strong className="text-vulcanico font-bold">{restTimer.nextExerciseLastWeight} kg</strong>
+                      </span>
+                    ) : (
+                      <span className="font-mono text-[9px] text-concrete/60 uppercase mt-1.5 block">
+                        Sem carga anterior registrada
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Bottom: Interactive Controls */}
@@ -3498,12 +3676,17 @@ export default function AppContainer() {
           )}
 
           {/* Active Workout Select Exercise Overlay */}
-          {addingExerciseToActiveWorkout && (
+          {(addingExerciseToActiveWorkout || replacingActiveExerciseId) && (
             <div className="absolute inset-0 z-50 bg-noturno/95 p-6 flex flex-col">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="font-display text-2xl uppercase">Selecionar Exercício</h3>
+                <h3 className="font-display text-2xl uppercase">
+                  {replacingActiveExerciseId ? "Substituir Exercício" : "Selecionar Exercício"}
+                </h3>
                 <button 
-                  onClick={() => setAddingExerciseToActiveWorkout(false)}
+                  onClick={() => {
+                    setAddingExerciseToActiveWorkout(false);
+                    setReplacingActiveExerciseId(null);
+                  }}
                   className="text-concrete hover:text-white"
                 >
                   <X size={24} />
@@ -3534,7 +3717,13 @@ export default function AppContainer() {
                         {list.map(ex => (
                           <button
                             key={ex.id}
-                            onClick={() => handleAddExerciseToActiveWorkout(ex)}
+                            onClick={() => {
+                              if (replacingActiveExerciseId) {
+                                handleReplaceExerciseInActiveWorkout(ex);
+                              } else {
+                                handleAddExerciseToActiveWorkout(ex);
+                              }
+                            }}
                             className="text-left py-3 border-b border-concrete/10 hover:text-vulcanico transition-colors"
                           >
                             <span className="font-display text-lg uppercase block">{ex.name}</span>
@@ -4203,10 +4392,10 @@ export default function AppContainer() {
                       isDragging ? "cursor-grabbing select-none" : "snap-x snap-mandatory cursor-grab"
                     }`}
                   >
-                    {activePlan.workouts.length === 0 ? (
+                    {activePlanWorkouts.length === 0 ? (
                       <p className="font-mono text-xs text-concrete uppercase">Este plano não possui treinos cadastrados.</p>
                     ) : (
-                      activePlan.workouts.map((w) => (
+                      activePlanWorkouts.map((w) => (
                         <div key={w.id} className="w-[90%] shrink-0 snap-center px-2 flex flex-col">
                           <div className="w-full aspect-[4/3] border border-concrete/20 bg-concrete/5 p-6 flex items-center justify-center rounded-2xl">
                             <h3 className="font-display text-3xl text-white uppercase leading-none">{w.name}</h3>
@@ -4216,9 +4405,9 @@ export default function AppContainer() {
                     )}
                   </div>
 
-                  {activePlan.workouts.length > 1 && (
+                  {activePlanWorkouts.length > 1 && (
                     <div className="flex justify-center gap-1.5 mt-2">
-                      {activePlan.workouts.map((_, idx) => (
+                      {activePlanWorkouts.map((_, idx) => (
                         <div 
                           key={idx} 
                           className={`h-1.5 transition-all duration-300 rounded-full ${
@@ -4229,14 +4418,14 @@ export default function AppContainer() {
                     </div>
                   )}
 
-                  {activePlan.workouts.length > 0 && (
+                  {activePlanWorkouts.length > 0 && (
                     <button 
                       onClick={() => {
                         if (activeWorkout) {
                           setIsWorkoutMinimized(false);
                           return;
                         }
-                        const currentWorkout = activePlan.workouts[activeWorkoutIndex];
+                        const currentWorkout = activePlanWorkouts[activeWorkoutIndex];
                         if (currentWorkout) {
                           handleStartWorkout(currentWorkout, activePlan.name);
                         }
@@ -4265,13 +4454,13 @@ export default function AppContainer() {
             )}
 
             {/* List all plans if more than 1 */}
-            {plans.length > 0 && (
+            {plans.filter(p => !p.isDeleted).length > 0 && (
               <div className="mt-8 pt-8 border-t border-concrete/20">
                 <span className="font-mono text-concrete text-[10px] tracking-widest block mb-4 uppercase">
-                  Todos os Planos ({plans.length})
+                  Todos os Planos ({plans.filter(p => !p.isDeleted).length})
                 </span>
                 <div className="flex flex-col gap-4">
-                  {plans.map(p => {
+                  {plans.filter(p => !p.isDeleted).map(p => {
                     const isActive = p.id === activePlanId;
                     return (
                       <div key={p.id} className="flex items-center justify-between py-2 border-b border-concrete/10">
@@ -4386,11 +4575,33 @@ export default function AppContainer() {
               </div>
             </form>
 
-            {/* List Grouped by Muscle */}
+            {/* View Mode Toggle */}
+            <div className="flex gap-2 mb-6 max-w-xs">
+              {(["muscle", "alphabetical"] as const).map((mode) => {
+                const labelMap = { muscle: "Por Músculo", alphabetical: "Ordem A-Z" };
+                const isActive = exerciseViewMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setExerciseViewMode(mode)}
+                    className={`flex-1 py-1.5 font-mono text-[10px] uppercase rounded-lg border transition-colors ${
+                      isActive 
+                        ? "bg-vulcanico border-vulcanico text-noturno font-bold" 
+                        : "border-concrete/30 text-concrete hover:border-white hover:text-white"
+                    }`}
+                  >
+                    {labelMap[mode]}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* List of exercises */}
             <div className="flex flex-col gap-8 pb-10">
               {exercises.length === 0 ? (
                 <p className="font-mono text-xs text-concrete uppercase">Nenhum exercício na biblioteca.</p>
-              ) : (
+              ) : exerciseViewMode === "muscle" ? (
                 Object.entries(exercisesByMuscle).map(([muscle, list]) => (
                   <div key={muscle} className="flex flex-col">
                     <span className="font-mono text-concrete text-[10px] tracking-widest uppercase border-b border-concrete/10 pb-1 mb-3">
@@ -4408,8 +4619,11 @@ export default function AppContainer() {
                               </div>
                             )}
                             <div className="flex flex-col">
-                              <span className="font-display text-xl uppercase text-white group-hover:text-vulcanico transition-colors">
+                              <span className="font-display text-xl uppercase text-white group-hover:text-vulcanico transition-colors flex items-center gap-2">
                                 {ex.name}
+                                {ex.isRepsOnly && (
+                                  <span className="text-[8px] font-mono bg-vulcanico/20 text-vulcanico px-1 rounded font-bold uppercase">Calistenia</span>
+                                )}
                               </span>
                               {ex.videoUrl && (
                                 <span className="font-mono text-[9px] text-vulcanico uppercase tracking-widest flex items-center gap-1">
@@ -4429,6 +4643,39 @@ export default function AppContainer() {
                     </div>
                   </div>
                 ))
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {sortedExercisesFlat.map(ex => (
+                    <div key={ex.id} className="flex justify-between items-center py-2 group cursor-pointer hover:bg-concrete/5 px-2 -mx-2 rounded-lg transition-colors">
+                      <div className="flex items-center gap-3 flex-1" onClick={() => setEditingExercise(ex)}>
+                        {ex.thumbnailUrl ? (
+                          <img src={ex.thumbnailUrl} alt={ex.name} className="w-10 h-10 object-cover rounded-md" />
+                        ) : (
+                          <div className="w-10 h-10 bg-concrete/10 rounded-md flex items-center justify-center">
+                            <Dumbbell size={16} className="text-concrete" />
+                          </div>
+                        )}
+                        <div className="flex flex-col">
+                          <span className="font-display text-xl uppercase text-white group-hover:text-vulcanico transition-colors flex items-center gap-2">
+                            {ex.name}
+                            {ex.isRepsOnly && (
+                              <span className="text-[8px] font-mono bg-vulcanico/20 text-vulcanico px-1 rounded font-bold uppercase">Calistenia</span>
+                            )}
+                          </span>
+                          <span className="font-mono text-[9px] text-concrete uppercase tracking-wider">
+                            {ex.muscle} {ex.videoUrl && "• Tem Vídeo"}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteExercise(ex.id)}
+                        className="text-concrete hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -4526,7 +4773,7 @@ export default function AppContainer() {
                     let totalSetsEver = 0;
                     const weightHistory: { date: number; maxWeight: number }[] = [];
 
-                    history.forEach(log => {
+                    history.filter(log => !log.isDeleted).forEach(log => {
                       let sessionMax = 0;
                       log.exercises.forEach(ex => {
                         if (ex.name === focusedName) {
