@@ -342,6 +342,8 @@ export default function AppContainer() {
     setIndex: number;
     nextExerciseName?: string;
     nextExerciseLastWeight?: string;
+    exerciseIndex?: number;
+    totalExercises?: number;
   } | null>(null);
   const [restRemainingMs, setRestRemainingMs] = useState(0);
   const restTimerRef = useRef(restTimer);
@@ -2172,7 +2174,9 @@ export default function AppContainer() {
                 exerciseName: exDef?.name || "Exercício",
                 setIndex,
                 nextExerciseName: nextExName,
-                nextExerciseLastWeight: nextExLastWeight
+                nextExerciseLastWeight: nextExLastWeight,
+                exerciseIndex: exIndex + 1,
+                totalExercises: prev.exercises.length
               });
             }
 
@@ -3607,6 +3611,11 @@ export default function AppContainer() {
                 <span className="font-mono text-xs text-vulcanico uppercase tracking-widest font-bold mb-2">
                   Tempo de Descanso
                 </span>
+                {restTimer.exerciseIndex && restTimer.totalExercises && (
+                  <span className="font-mono text-[10px] text-concrete/80 uppercase tracking-wider mb-2 block">
+                    Exercício {restTimer.exerciseIndex} de {restTimer.totalExercises}
+                  </span>
+                )}
                 <h2 className="font-display text-3xl uppercase text-white leading-tight max-w-xs">
                   {restTimer.exerciseName}
                 </h2>
