@@ -3497,6 +3497,27 @@ export default function AppContainer() {
               setModalTempValue(next % 1 !== 0 ? next.toFixed(1) : next.toString());
             };
 
+            const handleKeypadPress = (key: string) => {
+              setModalTempValue(prev => {
+                if (key === "backspace") {
+                  if (prev.length <= 1) return "0";
+                  return prev.slice(0, -1);
+                }
+                if (key === ".") {
+                  if (!isWeight) return prev; // reps don't have decimal
+                  if (prev.includes(".")) return prev;
+                  return prev + ".";
+                }
+                // Digit 0-9
+                if (prev === "0") {
+                  return key;
+                }
+                // Limit to sensible digits length (e.g. 5 chars max, like 187.5)
+                if (prev.length >= 6) return prev;
+                return prev + key;
+              });
+            };
+
             const handleConfirm = () => {
               handleUpdateActiveSet(
                 activeInputModal.exerciseId,
@@ -3523,71 +3544,110 @@ export default function AppContainer() {
 
                   {/* Big Number Display */}
                   <div className="flex flex-col items-center justify-center py-4">
-                    {isEditingDirectly ? (
-                      <div className="flex items-baseline justify-center border-b-2 border-vulcanico pb-1 animate-fade-in">
-                        <input
-                          type="number"
-                          step={isWeight ? "0.5" : "1"}
-                          value={modalTempValue}
-                          onChange={(e) => setModalTempValue(e.target.value)}
-                          onBlur={() => setIsEditingDirectly(false)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleConfirm();
-                          }}
-                          autoFocus
-                          className="font-mono text-7xl text-white font-bold bg-transparent text-center focus:outline-none w-44"
-                        />
-                        <span className="text-3xl text-concrete ml-2 font-normal">{isWeight ? "kg" : "reps"}</span>
+                    <button 
+                      onClick={() => setIsEditingDirectly(!isEditingDirectly)}
+                      className={`font-mono text-8xl font-bold tracking-tighter tabular-nums drop-shadow-[0_0_15px_rgba(255,255,255,0.15)] focus:outline-none transition-colors flex items-baseline justify-center w-full ${
+                        isEditingDirectly ? "text-vulcanico border-b-2 border-vulcanico pb-1" : "text-white hover:text-vulcanico"
+                      }`}
+                      title={isEditingDirectly ? "Visualizar Carga" : "Clique para digitar"}
+                    >
+                      {modalTempValue || "0"}
+                      {isEditingDirectly && <span className="animate-pulse text-vulcanico ml-1">|</span>}
+                      <span className="text-3xl text-concrete ml-2 font-normal">{isWeight ? "kg" : "reps"}</span>
+                    </button>
+                  </div>
+
+                  {isEditingDirectly ? (
+                    /* Custom Numeric Keypad */
+                    <div className="flex flex-col gap-4 animate-fade-in">
+                      <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto w-full">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                          <button
+                            key={num}
+                            type="button"
+                            onClick={() => handleKeypadPress(num.toString())}
+                            className="bg-concrete/10 hover:bg-concrete/20 text-white font-display text-2xl py-4 rounded-xl active:scale-95 transition-all font-bold"
+                          >
+                            {num}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => handleKeypadPress(".")}
+                          disabled={!isWeight}
+                          className={`font-display text-2xl py-4 rounded-xl active:scale-95 transition-all font-bold ${
+                            isWeight 
+                              ? "bg-concrete/10 hover:bg-concrete/20 text-white" 
+                              : "opacity-20 text-concrete cursor-not-allowed"
+                          }`}
+                        >
+                          .
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleKeypadPress("0")}
+                          className="bg-concrete/10 hover:bg-concrete/20 text-white font-display text-2xl py-4 rounded-xl active:scale-95 transition-all font-bold"
+                        >
+                          0
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleKeypadPress("backspace")}
+                          className="bg-red-500/10 hover:bg-red-500/20 text-red-400 font-display text-xl py-4 rounded-xl active:scale-95 transition-all font-bold flex items-center justify-center"
+                        >
+                          ⌫
+                        </button>
                       </div>
-                    ) : (
-                      <button 
-                        onClick={() => setIsEditingDirectly(true)}
-                        className="font-mono text-8xl text-white font-bold tracking-tighter tabular-nums drop-shadow-[0_0_15px_rgba(255,255,255,0.15)] focus:outline-none hover:text-vulcanico transition-colors flex items-baseline justify-center w-full"
-                        title="Clique para digitar"
+                      
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingDirectly(false)}
+                        className="font-mono text-[10px] text-vulcanico uppercase tracking-wider text-center underline hover:text-white"
                       >
-                        {modalTempValue || "0"}
-                        <span className="text-3xl text-concrete ml-2 font-normal">{isWeight ? "kg" : "reps"}</span>
+                        Voltar para o Slider
                       </button>
-                    )}
-                  </div>
-
-                  {/* Slider */}
-                  <div className="w-full px-2 mt-4">
-                    <input 
-                      type="range" 
-                      min={minVal.toString()} 
-                      max={maxVal.toString()} 
-                      step={isWeight ? "0.5" : "1"}
-                      value={modalTempValue || 0}
-                      onChange={(e) => setModalTempValue(e.target.value)}
-                      className="w-full h-2 bg-concrete/20 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-vulcanico [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(255,255,255,0.2)] hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
-                    />
-                    <div className="flex justify-between text-concrete font-mono text-[10px] mt-2 px-1">
-                      <span>{minVal}</span>
-                      <span>{maxVal}</span>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      {/* Slider */}
+                      <div className="w-full px-2 mt-4">
+                        <input 
+                          type="range" 
+                          min={minVal.toString()} 
+                          max={maxVal.toString()} 
+                          step={isWeight ? "0.5" : "1"}
+                          value={modalTempValue || 0}
+                          onChange={(e) => setModalTempValue(e.target.value)}
+                          className="w-full h-2 bg-concrete/20 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-vulcanico [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(255,255,255,0.2)] hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
+                        />
+                        <div className="flex justify-between text-concrete font-mono text-[10px] mt-2 px-1">
+                          <span>{minVal}</span>
+                          <span>{maxVal}</span>
+                        </div>
+                      </div>
 
-                  {/* Quick Actions */}
-                  <div className={isWeight ? "grid grid-cols-6 gap-2 mt-4" : "grid grid-cols-4 gap-3 mt-4"}>
-                    {isWeight ? (
-                      <>
-                        <button onClick={() => handleQuickAction(-10)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">-10</button>
-                        <button onClick={() => handleQuickAction(-5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">-5</button>
-                        <button onClick={() => handleQuickAction(-2.5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">-2.5</button>
-                        <button onClick={() => handleQuickAction(2.5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">+2.5</button>
-                        <button onClick={() => handleQuickAction(5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">+5</button>
-                        <button onClick={() => handleQuickAction(10)} className="bg-vulcanico/20 text-vulcanico border border-vulcanico/30 py-3 rounded-xl font-mono text-[10px] hover:bg-vulcanico/30 hover:text-vulcanico active:scale-95 transition-all font-bold">+10</button>
-                      </>
-                    ) : (
-                      <>
-                        <button onClick={() => setModalTempValue("0")} className="bg-red-950/40 text-red-400 py-3 rounded-xl font-mono text-[10px] uppercase font-bold hover:bg-red-900/50 active:scale-95 transition-all">Falhou</button>
-                        <button onClick={() => handleQuickAction(-1)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">-1</button>
-                        <button onClick={() => handleQuickAction(1)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">+1</button>
-                        <button onClick={() => handleQuickAction(5)} className="bg-vulcanico/20 text-vulcanico border border-vulcanico/30 py-3 rounded-xl font-mono text-sm hover:bg-vulcanico/30 hover:text-vulcanico active:scale-95 transition-all">+5</button>
-                      </>
-                    )}
-                  </div>
+                      {/* Quick Actions */}
+                      <div className={isWeight ? "grid grid-cols-6 gap-2 mt-4" : "grid grid-cols-4 gap-3 mt-4"}>
+                        {isWeight ? (
+                          <>
+                            <button onClick={() => handleQuickAction(-10)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">-10</button>
+                            <button onClick={() => handleQuickAction(-5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">-5</button>
+                            <button onClick={() => handleQuickAction(-2.5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">-2.5</button>
+                            <button onClick={() => handleQuickAction(2.5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">+2.5</button>
+                            <button onClick={() => handleQuickAction(5)} className="bg-concrete/10 py-3 rounded-xl font-mono text-[10px] text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all font-bold">+5</button>
+                            <button onClick={() => handleQuickAction(10)} className="bg-vulcanico/20 text-vulcanico border border-vulcanico/30 py-3 rounded-xl font-mono text-[10px] hover:bg-vulcanico/30 hover:text-vulcanico active:scale-95 transition-all font-bold">+10</button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => setModalTempValue("0")} className="bg-red-950/40 text-red-400 py-3 rounded-xl font-mono text-[10px] uppercase font-bold hover:bg-red-900/50 active:scale-95 transition-all">Falhou</button>
+                            <button onClick={() => handleQuickAction(-1)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">-1</button>
+                            <button onClick={() => handleQuickAction(1)} className="bg-concrete/10 py-3 rounded-xl font-mono text-sm text-concrete hover:bg-concrete/20 hover:text-white active:scale-95 transition-all">+1</button>
+                            <button onClick={() => handleQuickAction(5)} className="bg-vulcanico/20 text-vulcanico border border-vulcanico/30 py-3 rounded-xl font-mono text-sm hover:bg-vulcanico/30 hover:text-vulcanico active:scale-95 transition-all">+5</button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
 
                   {/* Confirm Button */}
                   <button 
