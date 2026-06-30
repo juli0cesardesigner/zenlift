@@ -26,7 +26,8 @@ import {
   FileText,
   AlertCircle,
   AlertTriangle,
-  Upload
+  Upload,
+  Link
 } from "lucide-react";
 import { supabase } from "./supabase";
 import { User as SupabaseUser } from "@supabase/supabase-js";
@@ -79,7 +80,9 @@ type PlannedExercise = {
   exerciseId: string;
   sets: PlannedSet[];
   isDeleted?: boolean;
+  supersetGroupId?: string;
 };
+
 
 type WorkoutTemplate = {
   id: string;
@@ -121,6 +124,7 @@ type ActiveExercise = {
   sets: ActiveSet[];
   elapsedSeconds?: number;
   overloadSuggestion?: string;
+  supersetGroupId?: string;
 };
 
 type ActiveWorkoutSession = {
@@ -146,6 +150,7 @@ type HistoryLog = {
   exercises: {
     name: string;
     elapsedSeconds?: number;
+    supersetGroupId?: string;
     sets: {
       minReps: number;
       maxReps: number;
@@ -624,7 +629,8 @@ export default function AppContainer() {
               exercise_id: pe.exerciseId,
               order_index: peIdx,
               user_id: userId,
-              is_deleted: pe.isDeleted || w.isDeleted || p.isDeleted || false
+              is_deleted: pe.isDeleted || w.isDeleted || p.isDeleted || false,
+              superset_group_id: pe.supersetGroupId || null
             });
           });
         });
@@ -690,7 +696,7 @@ export default function AppContainer() {
           workouts (
             id, name, order_index, is_deleted,
             planned_exercises (
-              id, exercise_id, order_index, is_deleted,
+              id, exercise_id, order_index, is_deleted, superset_group_id,
               planned_sets (
                 id, min_reps, max_reps, rest_seconds, is_drop_set, is_to_failure,
                 method_type, custom_method_name, drop_count, rest_pause_sets, rest_pause_seconds, failure_type, order_index, is_deleted
@@ -733,7 +739,8 @@ export default function AppContainer() {
                   id: pe.id,
                   exerciseId: pe.exercise_id,
                   sets,
-                  order_index: pe.order_index
+                  order_index: pe.order_index,
+                  supersetGroupId: pe.superset_group_id || undefined
                 };
               }).sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
 
@@ -788,7 +795,8 @@ export default function AppContainer() {
             history_log_id: log.id,
             name: ex.name,
             elapsed_seconds: ex.elapsedSeconds || 0,
-            order_index: exIdx
+            order_index: exIdx,
+            superset_group_id: ex.supersetGroupId || null
           });
         });
       });
@@ -848,7 +856,7 @@ export default function AppContainer() {
         .select(`
           id, name, date, duration_ms, volume_kg,
           history_log_exercises (
-            id, name, elapsed_seconds, order_index,
+            id, name, elapsed_seconds, order_index, superset_group_id,
             history_log_sets (
               id, min_reps, max_reps, is_drop_set, is_to_failure, weight, reps,
               method_type, custom_method_name, drop_count, rest_pause_sets, rest_pause_seconds, failure_type, order_index
@@ -882,6 +890,7 @@ export default function AppContainer() {
           return {
             name: ex.name,
             elapsedSeconds: ex.elapsed_seconds,
+            supersetGroupId: ex.superset_group_id || undefined,
             sets,
             order_index: ex.order_index
           };
@@ -1916,6 +1925,37 @@ export default function AppContainer() {
     });
   };
 
+  const handleToggleConjugate = (workoutId: string, peId: string) => {
+    if (!editingPlan) return;
+    setEditingPlan(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        workouts: prev.workouts.map(w => {
+          if (w.id !== workoutId) return w;
+          const idx = w.exercises.findIndex(e => e.id === peId);
+          if (idx === -1 || idx === w.exercises.length - 1) return w;
+          
+          const currentEx = w.exercises[idx];
+          const nextEx = w.exercises[idx + 1];
+          
+          const isGrouped = !!(currentEx.supersetGroupId && nextEx.supersetGroupId && currentEx.supersetGroupId === nextEx.supersetGroupId);
+          const newGroupId = isGrouped ? undefined : (currentEx.supersetGroupId || nextEx.supersetGroupId || `ss_${crypto.randomUUID()}`);
+          
+          return {
+            ...w,
+            exercises: w.exercises.map((e, eIdx) => {
+              if (eIdx === idx || eIdx === idx + 1) {
+                return { ...e, supersetGroupId: newGroupId };
+              }
+              return e;
+            })
+          };
+        })
+      };
+    });
+  };
+
   // --- ACTIONS: EXERCISE SET CONFIGURATION ---
   const handleSaveExerciseConfig = () => {
     if (!editingPlan || !configuringExercise) return;
@@ -2081,6 +2121,7 @@ export default function AppContainer() {
           exerciseId: pe.exerciseId,
           elapsedSeconds: 0,
           overloadSuggestion,
+          supersetGroupId: pe.supersetGroupId,
           sets: pe.sets.map((ps, idx) => ({
             id: `as_${crypto.randomUUID()}`,
             minReps: ps.minReps,
@@ -2136,7 +2177,11 @@ export default function AppContainer() {
             if (s.id !== setId) return s;
 
             // Trigger Rest Timer
-            if (field === "completed" && value === true && s.restSeconds > 0 && !s.completed && !isLastSetOfWorkout) {
+            const groupExercises = prev.exercises.filter(e => e.supersetGroupId && e.supersetGroupId === ex.supersetGroupId);
+            const lastGroupEx = groupExercises[groupExercises.length - 1];
+            const isLastExerciseInGroup = lastGroupEx ? lastGroupEx.id === ex.id : true;
+
+            if (field === "completed" && value === true && s.restSeconds > 0 && !s.completed && !isLastSetOfWorkout && isLastExerciseInGroup) {
               const exDef = exerciseMap[ex.exerciseId];
               const setIndex = sIdx + 1;
               
@@ -2354,31 +2399,38 @@ export default function AppContainer() {
     let totalVolume = 0;
     const completedExercises = activeWorkout.exercises.map(ae => {
       const exDef = exerciseMap[ae.exerciseId];
-      const doneSets = ae.sets.filter(s => s.completed && s.reps && s.weight);
+      const doneSets = ae.sets.filter(s => s.completed);
 
-      doneSets.forEach(s => {
-        const w = parseFloat(s.weight) || 0;
-        const r = parseInt(s.reps) || 0;
+      const mappedSets = doneSets.map(s => {
+        const resolvedWeight = (exDef?.isTimeBased || exDef?.isRepsOnly)
+          ? ""
+          : (s.weight || s.suggestedWeight || "0");
+        const resolvedReps = s.reps || s.suggestedReps || "0";
+
+        const w = parseFloat(resolvedWeight) || 0;
+        const r = parseInt(resolvedReps) || 0;
         totalVolume += (w * r);
-      });
 
-      return {
-        name: exDef?.name || "Exercício",
-        elapsedSeconds: ae.elapsedSeconds || 0,
-        sets: doneSets.map(s => ({
+        return {
           minReps: s.minReps,
           maxReps: s.maxReps,
           isDropSet: s.isDropSet,
           isToFailure: s.isToFailure,
-          weight: s.weight,
-          reps: s.reps,
+          weight: resolvedWeight,
+          reps: resolvedReps,
           methodType: s.methodType,
           customMethodName: s.customMethodName,
           dropCount: s.dropCount,
           restPauseSets: s.restPauseSets,
           restPauseSeconds: s.restPauseSeconds,
           failureType: s.failureType
-        }))
+        };
+      });
+
+      return {
+        name: exDef?.name || "Exercício",
+        elapsedSeconds: ae.elapsedSeconds || 0,
+        sets: mappedSets
       };
     }).filter(ex => ex.sets.length > 0);
 
@@ -3026,23 +3078,43 @@ export default function AppContainer() {
               ) : (
                 activeWorkout.exercises.map((ae, aeIdx) => {
                   const exDef = exerciseMap[ae.exerciseId];
+                  const activeEx = activeWorkout.exercises[resolvedActiveExerciseIndex];
+                  const isInActiveSuperset = !!(activeEx && ae.supersetGroupId && ae.supersetGroupId === activeEx.supersetGroupId);
                   const distance = aeIdx - resolvedActiveExerciseIndex;
-                  const isQueued = distance > 0;
+                  const isQueued = distance > 0 && !isInActiveSuperset;
+                  
                   const isExerciseCompleted = ae.sets.every(s => s.completed);
-                  const isCollapsed = isExerciseCompleted && !expandedCompletedExercises[ae.id];
+                  const isGroupCompleted = ae.supersetGroupId
+                    ? activeWorkout.exercises
+                        .filter(ex => ex.supersetGroupId === ae.supersetGroupId)
+                        .every(ex => ex.sets.every(s => s.completed))
+                    : isExerciseCompleted;
+                  const isCollapsed = isGroupCompleted && !expandedCompletedExercises[ae.id];
 
                   if (isCollapsed) {
                     return (
-                      <div key={ae.id} className="flex flex-col bg-concrete/5 border border-concrete/10 rounded-2xl p-4 transition-all animate-fade-in">
+                      <div 
+                        key={ae.id} 
+                        className={`flex flex-col bg-concrete/5 border border-concrete/10 rounded-2xl p-4 transition-all animate-fade-in ${
+                          ae.supersetGroupId ? "border-l-4 border-l-purple-500 pl-3 bg-purple-500/5" : ""
+                        }`}
+                      >
                         <div className="flex justify-between items-center">
                           <div className="flex items-center gap-3">
                             <div className="w-6 h-6 rounded-full bg-vulcanico flex items-center justify-center text-noturno shrink-0">
                               <Check size={14} strokeWidth={3} />
                             </div>
                             <div>
-                              <h3 className="font-display text-lg uppercase text-concrete leading-tight line-through">
-                                {exDef?.name || "Desconhecido"}
-                              </h3>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-display text-lg uppercase text-concrete leading-tight line-through">
+                                  {exDef?.name || "Desconhecido"}
+                                </h3>
+                                {ae.supersetGroupId && (
+                                  <span className="text-[8px] font-mono uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1 py-0.5 rounded font-bold tracking-wider">
+                                    Conjugado
+                                  </span>
+                                )}
+                              </div>
                               <span className="font-mono text-[9px] uppercase text-vulcanico mt-0.5 block">
                                 {ae.sets.length} séries concluídas
                               </span>
@@ -3074,8 +3146,12 @@ export default function AppContainer() {
                   return (
                     <div 
                       key={ae.id} 
-                      data-active-exercise={aeIdx === resolvedActiveExerciseIndex}
-                      className="flex flex-col relative transition-all duration-500"
+                      data-active-exercise={aeIdx === resolvedActiveExerciseIndex || isInActiveSuperset}
+                      className={`flex flex-col relative transition-all duration-500 ${
+                        ae.supersetGroupId 
+                          ? "border-l-4 border-l-purple-500 pl-4 py-2 my-2 bg-purple-500/5 rounded-r-xl" 
+                          : ""
+                      }`}
                       style={
                         isQueued && isWorkoutMinimized
                           ? { opacity: distance === 1 ? 0.75 : distance === 2 ? 0.40 : 0.15 }
@@ -3088,6 +3164,11 @@ export default function AppContainer() {
                               <h3 className="font-display text-2xl uppercase text-vulcanico leading-tight">
                                 {exDef?.name || "Desconhecido"}
                               </h3>
+                              {ae.supersetGroupId && (
+                                <span className="text-[9px] font-mono uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-bold tracking-wider">
+                                  Biset/Conjugado
+                                </span>
+                              )}
                               {!isExerciseCompleted && (
                                 <div className="flex gap-1.5">
                                   {distance === 0 && activeWorkout.exercises.length > 1 && (
@@ -3885,14 +3966,31 @@ export default function AppContainer() {
                         </p>
                       ) : (
                         <div className="flex flex-col gap-4">
-                          {editingWorkout.exercises.map((pe) => {
+                          {editingWorkout.exercises.map((pe, peIdx) => {
                             const exDef = exerciseMap[pe.exerciseId];
+                            const nextPe = editingWorkout.exercises[peIdx + 1];
+                            const isGroupedWithNext = !!(pe.supersetGroupId && nextPe && pe.supersetGroupId === nextPe.supersetGroupId);
+
                             return (
-                              <div key={pe.id} className="flex items-center justify-between py-2 border-b border-concrete/10">
+                              <div 
+                                key={pe.id} 
+                                className={`flex items-center justify-between py-2 border-b border-concrete/10 transition-all ${
+                                  pe.supersetGroupId 
+                                    ? "border-l-4 border-l-purple-500 pl-3 bg-purple-500/5 my-1 rounded-r-lg" 
+                                    : ""
+                                }`}
+                              >
                                 <div>
-                                  <span className="font-display uppercase text-white text-lg">
-                                    {exDef?.name || "Desconhecido"}
-                                  </span>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-display uppercase text-white text-lg">
+                                      {exDef?.name || "Desconhecido"}
+                                    </span>
+                                    {pe.supersetGroupId && (
+                                      <span className="font-mono text-[8px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1 py-0.5 rounded font-bold uppercase tracking-wider">
+                                        Conjugado
+                                      </span>
+                                    )}
+                                  </div>
                                   <div className="font-mono text-[9px] text-concrete uppercase mt-0.5">
                                     {pe.sets.length} séries • Meta: {
                                       pe.sets.map((s) => {
@@ -3915,6 +4013,15 @@ export default function AppContainer() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-3">
+                                  {peIdx < editingWorkout.exercises.length - 1 && (
+                                    <button
+                                      onClick={() => handleToggleConjugate(editingWorkout.id, pe.id)}
+                                      className={`p-1 transition-colors ${isGroupedWithNext ? "text-purple-400 hover:text-white" : "text-concrete/40 hover:text-purple-400"}`}
+                                      title={isGroupedWithNext ? "Desconectar do próximo exercício" : "Conugar com o próximo exercício (Biset / Superset)"}
+                                    >
+                                      <Link size={16} className={isGroupedWithNext ? "rotate-45" : ""} />
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => setConfiguringExercise({ workoutId: editingWorkout.id, exercise: pe })}
                                     className="text-vulcanico hover:text-white transition-colors"
@@ -5261,9 +5368,23 @@ export default function AppContainer() {
 
                         <div className="flex flex-col gap-3 pl-2">
                           {log.exercises.map((ex, i) => (
-                            <div key={i} className="flex flex-col">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-display text-sm uppercase text-white">{ex.name}</span>
+                            <div 
+                              key={i} 
+                              className={`flex flex-col ${
+                                ex.supersetGroupId 
+                                  ? "border-l-2 border-l-purple-500 pl-2 bg-purple-500/2 py-1 my-0.5 rounded-r" 
+                                  : ""
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-display text-sm uppercase text-white">{ex.name}</span>
+                                  {ex.supersetGroupId && (
+                                    <span className="font-mono text-[8px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1 rounded font-bold uppercase">
+                                      Conjugado
+                                    </span>
+                                  )}
+                                </div>
                                 {ex.elapsedSeconds !== undefined && ex.elapsedSeconds > 0 && (
                                   <span className="font-mono text-[9px] text-concrete uppercase flex items-center gap-1">
                                     <Clock size={9} />
