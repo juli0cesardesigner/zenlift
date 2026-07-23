@@ -29,7 +29,7 @@ export default function RootLayout({
     <html lang="pt-BR" suppressHydrationWarning>
       <body className="antialiased bg-noturno text-foreground font-sans selection:bg-transparent selection:text-foreground">
         {/* Desktop wrapper constraint */}
-        <div className="mx-auto w-full max-w-[480px] min-h-[100dvh] relative overflow-hidden bg-noturno shadow-2xl flex flex-col items-stretch">
+        <div className="w-full min-h-[100dvh] relative overflow-hidden bg-noturno flex flex-col items-stretch">
           {children}
         </div>
       </body>
