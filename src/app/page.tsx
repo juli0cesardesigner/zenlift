@@ -45,7 +45,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import { Tab, ExerciseDef, PlannedSet, PlannedExercise, WorkoutTemplate, Plan, ActiveSet, ActiveExercise, ActiveWorkoutSession, HistoryLog } from '../types';
 import { EXERCISE_FIELDS_LABEL_MAP, EXERCISE_VIEW_MODE_LABEL_MAP, STATS_PERIOD_LABEL_MAP, defaultExercises, muscleColors, nodePositions } from '../lib/constants';
-import { isValidVideoUrl } from '../lib/utils';
+import { isValidVideoUrl, formatTime, formatRestTime } from '../lib/utils';
 import { ToggleSwitch } from '../components/ui/ToggleSwitch';
 import { CustomSelect } from '../components/ui/CustomSelect';
 export default function AppContainer() {
@@ -104,10 +104,8 @@ export default function AppContainer() {
   const globalActiveSetId = useMemo(() => {
     if (!activeWorkout) return null;
     for (const ex of activeWorkout.exercises) {
-      if (!ex.sets.every(s => s.completed)) {
-        const incompleteSet = ex.sets.find(s => !s.completed);
-        if (incompleteSet) return incompleteSet.id;
-      }
+      const incompleteSet = ex.sets.find(s => !s.completed);
+      if (incompleteSet) return incompleteSet.id;
     }
     return null;
   }, [activeWorkout]);
@@ -788,15 +786,11 @@ export default function AppContainer() {
                 }))
             }));
 
-          const merged = [...filteredPrev];
+          const mergedMap = new Map(filteredPrev.map(p => [p.id, p]));
           pulledPlans.forEach(pp => {
-            const idx = merged.findIndex(mp => mp.id === pp.id);
-            if (idx !== -1) {
-              merged[idx] = pp;
-            } else {
-              merged.push(pp);
-            }
+            mergedMap.set(pp.id, pp);
           });
+          const merged = Array.from(mergedMap.values());
 
           const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
           syncedPlanIdsRef.current = newSyncedIds;
@@ -911,15 +905,11 @@ export default function AppContainer() {
                     }))
                 }));
 
-              const merged = [...filteredPrev];
-              pulledPlans.forEach((pp) => {
-                const idx = merged.findIndex((mp) => mp.id === pp.id);
-                if (idx !== -1) {
-                  merged[idx] = pp;
-                } else {
-                  merged.push(pp);
-                }
+              const mergedMap = new Map(filteredPrev.map(p => [p.id, p]));
+              pulledPlans.forEach(pp => {
+                mergedMap.set(pp.id, pp);
               });
+              const merged = Array.from(mergedMap.values());
 
               const newSyncedIds = merged.filter((p) => pulledIds.includes(p.id)).map((p) => p.id);
               syncedPlanIdsRef.current = newSyncedIds;
@@ -1266,10 +1256,6 @@ export default function AppContainer() {
       try {
         if ('wakeLock' in navigator && shouldKeepAwake) {
           wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-          console.log('Screen Wake Lock is active');
-          wakeLockRef.current.addEventListener('release', () => {
-            console.log('Screen Wake Lock was released');
-          });
         }
       } catch (err: any) {
         console.warn(`Wake Lock error: ${err.name}, ${err.message}`);
@@ -2651,7 +2637,7 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
 
               <div className="flex flex-col gap-2 mt-2">
                 <label className="font-mono text-concrete text-[10px] uppercase tracking-widest">Vídeo/GIF Demonstrativo</label>
-                {editingExercise.videoUrl && !editingExerciseVideoFile && (
+                {isValidVideoUrl(editingExercise.videoUrl) && !editingExerciseVideoFile && (
                    <video src={editingExercise.videoUrl} className="w-full max-h-[200px] object-cover rounded-lg border border-concrete/20 mb-2 bg-black" controls />
                 )}
                 <label className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-concrete/30 hover:border-vulcanico bg-concrete/5 hover:bg-vulcanico/10 py-4 rounded-xl cursor-pointer transition-colors text-concrete hover:text-white group">

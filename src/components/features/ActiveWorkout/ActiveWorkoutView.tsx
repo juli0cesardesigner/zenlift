@@ -2,6 +2,7 @@
 import React, { useRef, useState } from 'react';
 import { ChevronRight, ArrowLeft, Save, Plus, Edit3, Check, Trash2, Clock, Dumbbell, Play, X, Settings, Info, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckSquare, Square } from 'lucide-react';
 import { ExerciseDef } from '../../../types';
+import { isValidVideoUrl } from '../../../lib/utils';
 
 export function ActiveWorkoutView(props: any) {
   const blurMaskRef = useRef<HTMLDivElement>(null);
@@ -222,7 +223,7 @@ export function ActiveWorkoutView(props: any) {
                                 </div>
                               )}
                             </div>
-                            {exDef?.videoUrl && !isQueued && (
+                            {isValidVideoUrl(exDef?.videoUrl) && !isQueued && (
                               <div className="w-full mt-2 mb-2 rounded-lg overflow-hidden border border-concrete/20 bg-black">
                                 <video 
                                   src={exDef.videoUrl} 

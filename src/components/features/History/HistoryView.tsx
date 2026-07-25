@@ -6,6 +6,8 @@ import { STATS_PERIOD_LABEL_MAP, muscleColors } from '../../../lib/constants';
 import { isValidVideoUrl } from '../../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const PERIOD_LABEL_MAP = { week: "Semana", month: "Mês", year: "Ano", all: "Todos" } as const;
+
 export function HistoryView(props: any) {
   const {
     activeTab, history, statsPeriod, setStatsPeriod, workoutSummary, setWorkoutSummary,
@@ -26,7 +28,6 @@ export function HistoryView(props: any) {
             {/* Period Filters */}
             <div className="flex gap-2 mb-6 border-b border-concrete/15 pb-4">
               {(["week", "month", "year", "all"] as const).map((period) => {
-                const labelMap = { week: "Semana", month: "Mês", year: "Ano", all: "Todos" };
                 const isActive = statsPeriod === period;
                 return (
                   <button
@@ -38,7 +39,7 @@ export function HistoryView(props: any) {
                         : "border-concrete/20 text-concrete hover:border-white/30 hover:text-white"
                     }`}
                   >
-                    {labelMap[period]}
+                    {PERIOD_LABEL_MAP[period]}
                   </button>
                 );
               })}
