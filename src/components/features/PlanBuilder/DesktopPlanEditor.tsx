@@ -295,7 +295,9 @@ export function DesktopPlanEditor(props: any) {
                 ) : (
                   <div className="flex flex-col gap-6">
                     {activeWorkout.exercises.map((ex: any, exIdx: number) => {
-                      const def = exerciseMap[ex.exerciseId] || {};
+                      const def = exerciseMap[ex.exerciseId] || (exerciseMapByName && exerciseMapByName[ex.exerciseId]) || (exerciseMap && exerciseMap[ex.name]) || {};
+                      const exerciseTitle = def.name || ex.name || ex.exerciseId || "Exercício";
+                      const muscleLabel = def.muscle || def.primaryMuscle || ex.muscle || "Geral";
                       return (
                         <div key={ex.id} className="bg-noturno border border-concrete/20 rounded-xl overflow-hidden shadow-lg group">
                           
@@ -304,9 +306,9 @@ export function DesktopPlanEditor(props: any) {
                             <div className="flex items-center gap-4">
                               <span className="font-display text-2xl text-vulcanico w-8">{exIdx + 1}.</span>
                               <div>
-                                <h4 className="font-display text-lg text-white uppercase">{def.name || "Exercício Removido"}</h4>
-                                <span className="font-mono text-[10px] text-concrete uppercase" style={{ color: muscleColors[def.primaryMuscle] }}>
-                                  {def.primaryMuscle}
+                                <h4 className="font-display text-lg text-white uppercase">{exerciseTitle}</h4>
+                                <span className="font-mono text-[10px] text-concrete uppercase" style={{ color: muscleColors[muscleLabel] || "#8A99A8" }}>
+                                  {muscleLabel}
                                 </span>
                               </div>
                             </div>

@@ -203,17 +203,32 @@ export default function AppContainer() {
   // Pre-compute an exercise map for O(1) lookups instead of O(N) .find() inside loops
   const exerciseMap = useMemo(() => {
     return exercises.reduce((acc, ex) => {
-      acc[ex.id] = ex;
+      if (ex) {
+        acc[ex.id] = ex;
+        if (ex.name) acc[ex.name] = ex;
+      }
       return acc;
     }, {} as Record<string, ExerciseDef>);
   }, [exercises]);
 
   const exerciseMapByName = useMemo(() => {
     return exercises.reduce((acc, ex) => {
-      acc[ex.name] = ex;
+      if (ex && ex.name) acc[ex.name] = ex;
       return acc;
     }, {} as Record<string, ExerciseDef>);
   }, [exercises]);
+
+  // Ensure default exercises are never lost when merging local/custom exercises
+  const ensureDefaultExercises = (customList: ExerciseDef[] = []): ExerciseDef[] => {
+    const map = new Map<string, ExerciseDef>();
+    defaultExercises.forEach(ex => map.set(ex.id, ex));
+    (customList || []).forEach(ex => {
+      if (ex && !ex.isDeleted) {
+        map.set(ex.id, ex);
+      }
+    });
+    return Array.from(map.values());
+  };
 
   // Load state from local storage on mount
   useEffect(() => {
@@ -223,8 +238,16 @@ export default function AppContainer() {
     const storedHistory = localStorage.getItem("is_history_v4");
     const storedActiveWorkout = localStorage.getItem("is_active_workout_v4");
 
-    if (storedEx) setExercises(JSON.parse(storedEx));
-    else setExercises(defaultExercises);
+    if (storedEx) {
+      try {
+        const parsed = JSON.parse(storedEx);
+        setExercises(ensureDefaultExercises(parsed));
+      } catch {
+        setExercises(defaultExercises);
+      }
+    } else {
+      setExercises(defaultExercises);
+    }
 
     // Starts completely empty unless plans exist in localStorage
     if (storedPlans) {
@@ -753,7 +776,7 @@ export default function AppContainer() {
         const newSyncedIds = merged.filter(ex => ex.id.startsWith("ex_") && pulledIds.includes(ex.id)).map(ex => ex.id);
         syncedExerciseIdsRef.current = newSyncedIds;
         localStorage.setItem("is_synced_exercises_v1", JSON.stringify(newSyncedIds));
-        return merged;
+        return ensureDefaultExercises(merged);
       });
 
       // 2. Plans
