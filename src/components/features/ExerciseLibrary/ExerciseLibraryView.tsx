@@ -13,15 +13,15 @@ export function ExerciseLibraryView(props: any) {
     <>
         
           <div className="p-6 flex flex-col min-h-full">
-            <div className="flex justify-between items-start mb-8">
-              <h1 className="font-display text-4xl uppercase text-white tracking-tighter leading-none">Exercícios</h1>
+            <div className="flex justify-between items-center mb-8">
+              <h1 className="font-sans font-extrabold text-3xl sm:text-4xl uppercase text-white tracking-tight leading-none">Biblioteca de Exercícios</h1>
               <div className="flex flex-col items-end gap-3">
                 {renderSyncButton()}
                 <button
                   onClick={() => setIsImportModalOpen(true)}
-                  className="flex items-center gap-1.5 font-mono text-[9px] uppercase bg-concrete/10 border border-concrete/20 px-2 py-1.5 rounded text-white hover:bg-concrete/20 transition-colors"
+                  className="flex items-center gap-2 font-sans text-xs font-semibold uppercase bg-white/5 border border-concrete/20 px-3 py-2 rounded-xl text-white hover:bg-white/10 transition-all shadow-sm"
                 >
-                  <FileText size={12} /> Importar (Planilha)
+                  <FileText size={14} className="text-vulcanico" /> Importar (Planilha)
                 </button>
               </div>
             </div>

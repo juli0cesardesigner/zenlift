@@ -230,12 +230,15 @@ export default function AppContainer() {
 
     // Starts completely empty unless plans exist in localStorage
     if (storedPlans) {
-      const parsedPlans = JSON.parse(storedPlans);
+      const parsedPlans: Plan[] = JSON.parse(storedPlans);
       setPlans(parsedPlans);
-      if (storedActivePlan) {
+      const validPlans = parsedPlans.filter(p => !p.isDeleted);
+      if (storedActivePlan && validPlans.some(p => p.id === storedActivePlan)) {
         setActivePlanId(storedActivePlan);
-      } else if (parsedPlans.length > 0) {
-        setActivePlanId(parsedPlans[0].id);
+      } else if (validPlans.length > 0) {
+        setActivePlanId(validPlans[0].id);
+      } else {
+        setActivePlanId(null);
       }
     } else {
       setPlans([]);
@@ -1613,8 +1616,10 @@ export default function AppContainer() {
       onConfirm: () => {
         setPlans(prev => prev.map(p => p.id === planId ? { ...p, isDeleted: true } : p));
         if (activePlanId === planId) {
-          setActivePlanId(null);
+          const remainingPlans = plans.filter(p => p.id !== planId && !p.isDeleted);
+          setActivePlanId(remainingPlans.length > 0 ? remainingPlans[0].id : null);
         }
+        showToast("Plano excluído com sucesso!", "success");
       }
     });
   };
@@ -1634,10 +1639,31 @@ export default function AppContainer() {
   };
 
   
-  const handleMoveWorkout = (result: any) => {
-    if (!result.destination || !editingPlan) return;
-    const sourceIndex = result.source.index;
-    const destinationIndex = result.destination.index;
+  const handleMoveWorkout = (resultOrId: any, direction?: 'up' | 'down') => {
+    if (!editingPlan) return;
+    
+    // Case 1: Direction-based reorder ('up' | 'down')
+    if (typeof resultOrId === 'string' && direction) {
+      const index = editingPlan.workouts.findIndex(w => w.id === resultOrId);
+      if (index === -1) return;
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= editingPlan.workouts.length) return;
+
+      const newWorkouts = [...editingPlan.workouts];
+      const [moved] = newWorkouts.splice(index, 1);
+      newWorkouts.splice(targetIndex, 0, moved);
+
+      setEditingPlan({
+        ...editingPlan,
+        workouts: newWorkouts
+      });
+      return;
+    }
+
+    // Case 2: Drag & Drop DropResult
+    if (!resultOrId || !resultOrId.destination) return;
+    const sourceIndex = resultOrId.source.index;
+    const destinationIndex = resultOrId.destination.index;
     if (sourceIndex === destinationIndex) return;
     
     const newWorkouts = Array.from(editingPlan.workouts);

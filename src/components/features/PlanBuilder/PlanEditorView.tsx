@@ -234,16 +234,55 @@ export function PlanEditorView(props: any) {
                     ) : (
                       <div className="flex flex-col gap-3">
                         {editingPlan.workouts.map((w, wIdx) => (
-                          <button
+                          <div
                             key={w.id}
-                            onClick={() => setEditingWorkoutId(w.id)}
-                            className="w-full text-left py-4 px-6 border border-concrete/20 hover:border-vulcanico hover:text-vulcanico transition-colors flex justify-between items-center bg-concrete/5 group rounded-2xl"
+                            className="w-full border border-concrete/20 hover:border-vulcanico/50 transition-all flex items-center justify-between bg-concrete/5 group rounded-2xl p-2 pr-4"
                           >
-                            <span className="font-display text-lg uppercase tracking-wider">
-                              {w.name || `Treino ${String.fromCharCode(65 + wIdx)}`}
-                            </span>
-                            <ChevronRight size={18} className="text-concrete group-hover:text-vulcanico transition-colors" />
-                          </button>
+                            {/* Reorder Buttons (Up / Down) */}
+                            <div className="flex flex-col gap-0.5 shrink-0 border-r border-concrete/15 pr-2 mr-2">
+                              <button
+                                type="button"
+                                disabled={wIdx === 0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveWorkout && handleMoveWorkout(w.id, 'up');
+                                }}
+                                className="p-1 text-concrete hover:text-vulcanico disabled:opacity-25 disabled:hover:text-concrete transition-colors"
+                                title="Mover Treino para Cima"
+                              >
+                                <ChevronUp size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={wIdx === editingPlan.workouts.length - 1}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveWorkout && handleMoveWorkout(w.id, 'down');
+                                }}
+                                className="p-1 text-concrete hover:text-vulcanico disabled:opacity-25 disabled:hover:text-concrete transition-colors"
+                                title="Mover Treino para Baixo"
+                              >
+                                <ChevronDown size={16} />
+                              </button>
+                            </div>
+
+                            {/* Workout Info & Open Button */}
+                            <button
+                              type="button"
+                              onClick={() => setEditingWorkoutId(w.id)}
+                              className="flex-1 flex justify-between items-center text-left py-2 px-2"
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-sans font-bold text-lg text-white group-hover:text-vulcanico transition-colors uppercase tracking-wide">
+                                  {w.name || `Treino ${String.fromCharCode(65 + wIdx)}`}
+                                </span>
+                                <span className="font-mono text-xs text-concrete">
+                                  {w.exercises?.length || 0} exercício(s)
+                                </span>
+                              </div>
+                              <ChevronRight size={20} className="text-concrete group-hover:text-vulcanico transition-colors shrink-0 ml-2" />
+                            </button>
+                          </div>
                         ))}
                       </div>
                     )}

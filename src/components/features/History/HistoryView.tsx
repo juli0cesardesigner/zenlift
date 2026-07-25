@@ -18,8 +18,8 @@ export function HistoryView(props: any) {
     <>
         
           <div className="p-6 flex flex-col min-h-full">
-            <div className="flex justify-between items-end mb-4">
-              <h1 className="font-display text-[44px] uppercase text-white leading-none tracking-tight">Estatísticas</h1>
+            <div className="flex justify-between items-center mb-6">
+              <h1 className="font-sans font-extrabold text-3xl uppercase text-white tracking-tight">Estatísticas</h1>
               {renderSyncButton()}
             </div>
 
@@ -32,10 +32,10 @@ export function HistoryView(props: any) {
                   <button
                     key={period}
                     onClick={() => setStatsPeriod(period)}
-                    className={`flex-1 py-1.5 font-mono text-[10px] uppercase rounded-lg border transition-colors ${
+                    className={`flex-1 py-2 font-sans text-xs font-semibold uppercase rounded-xl border transition-all ${
                       isActive 
-                        ? "bg-vulcanico border-vulcanico text-noturno font-bold" 
-                        : "border-concrete/30 text-concrete hover:border-white hover:text-white"
+                        ? "bg-vulcanico border-vulcanico text-white font-bold shadow-lg shadow-vulcanico/20" 
+                        : "border-concrete/20 text-concrete hover:border-white/30 hover:text-white"
                     }`}
                   >
                     {labelMap[period]}
@@ -46,18 +46,18 @@ export function HistoryView(props: any) {
 
             {/* Metrics Grid */}
             <div className="grid grid-cols-2 gap-4 mb-8">
-              <div className="bg-concrete/5 border border-concrete/10 rounded-2xl p-4 flex flex-col justify-between aspect-[3/2]">
-                <span className="font-mono text-[9px] text-concrete uppercase tracking-widest leading-none">Sessões</span>
-                <span className="font-display text-4xl text-white mt-2 leading-none">{filteredLogs.length}</span>
-                <span className="font-mono text-[8px] text-concrete uppercase mt-1">Treinos Realizados</span>
+              <div className="bg-white/5 border border-concrete/15 rounded-2xl p-4 flex flex-col justify-between aspect-[3/2]">
+                <span className="font-sans text-xs font-semibold text-concrete uppercase tracking-wider leading-none">Sessões</span>
+                <span className="font-mono font-bold text-3xl sm:text-4xl text-white mt-2 leading-none">{filteredLogs.length}</span>
+                <span className="font-sans text-[10px] font-medium text-concrete/80 uppercase mt-1">Treinos Realizados</span>
               </div>
               
-              <div className="bg-concrete/5 border border-concrete/10 rounded-2xl p-4 flex flex-col justify-between aspect-[3/2]">
-                <span className="font-mono text-[9px] text-concrete uppercase tracking-widest leading-none">Tempo Total</span>
-                <span className="font-display text-4xl text-vulcanico mt-2 leading-none">
+              <div className="bg-white/5 border border-concrete/15 rounded-2xl p-4 flex flex-col justify-between aspect-[3/2]">
+                <span className="font-sans text-xs font-semibold text-concrete uppercase tracking-wider leading-none">Tempo Total</span>
+                <span className="font-mono font-bold text-3xl sm:text-4xl text-vulcanico mt-2 leading-none">
                   {((filteredLogs.reduce((acc, log) => acc + log.durationMs, 0)) / (1000 * 60 * 60)).toFixed(1)}h
                 </span>
-                <span className="font-mono text-[8px] text-concrete uppercase mt-1">Horas de Atividade</span>
+                <span className="font-sans text-[10px] font-medium text-concrete/80 uppercase mt-1">Horas de Atividade</span>
               </div>
 
               <div className="bg-concrete/5 border border-concrete/10 rounded-2xl p-4 flex flex-col justify-between aspect-[3/2]">

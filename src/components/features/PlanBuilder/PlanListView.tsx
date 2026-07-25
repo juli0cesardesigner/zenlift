@@ -14,18 +14,20 @@ export function PlanListView(props: any) {
     activePlan, activePlanWorkouts, activeWorkoutIndex, setActiveWorkoutIndex, activePlanId, setActivePlanId
   } = props;
 
+  const activePlansList = (plans || []).filter((p: any) => !p.isDeleted);
+
   return (
     <>
         <div className="p-6 flex flex-col lg:flex-row gap-8 lg:gap-16 min-h-full max-w-[1920px] mx-auto w-full">
           
           {/* SIDEBAR DE PLANOS (Esquerda no Desktop) */}
           <div className="w-full lg:w-[350px] shrink-0 flex flex-col">
-            <div className="flex justify-between items-end mb-8">
-              <h1 className="font-display text-4xl lg:text-5xl uppercase text-white tracking-tighter leading-none">Planos</h1>
+            <div className="flex justify-between items-center mb-8">
+              <h1 className="font-sans font-extrabold text-3xl lg:text-4xl uppercase text-white tracking-tight leading-none">Planos de Treino</h1>
               <div className="flex items-center gap-4">
                 <button 
                   onClick={handleStartCreatePlan}
-                  className="font-mono text-[11px] text-vulcanico uppercase tracking-widest underline hover:text-white"
+                  className="font-sans text-xs font-semibold text-vulcanico bg-vulcanico/10 border border-vulcanico/30 px-3 py-1.5 rounded-xl uppercase tracking-wider hover:bg-vulcanico hover:text-white transition-all shadow-sm"
                 >
                   + Criar Plano
                 </button>
@@ -36,23 +38,25 @@ export function PlanListView(props: any) {
             {/* TODOS OS PLANOS */}
             <div className="mt-2 lg:mt-0">
               <div className="flex justify-between items-center mb-4">
-                <span className="font-mono text-concrete text-[10px] tracking-widest uppercase">
-                  Todos os Planos ({plans.length})
+                <span className="font-sans text-xs font-semibold text-concrete tracking-wider uppercase">
+                  Todos os Planos ({activePlansList.length})
                 </span>
                 <div className="hidden lg:block">{renderSyncButton()}</div>
               </div>
-              <div className="flex flex-col gap-2">
-                {plans.map((p) => {
+              <div className="flex flex-col gap-3">
+                {activePlansList.map((p) => {
                   const isActive = p.id === activePlanId;
                   return (
-                    <div key={p.id} className={`flex items-center justify-between p-4 rounded-xl border transition-colors ${isActive ? "bg-vulcanico/10 border-vulcanico/30" : "bg-concrete/5 border-concrete/10 hover:border-concrete/30"}`}>
+                    <div key={p.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${isActive ? "bg-vulcanico/10 border-vulcanico/40 shadow-[0_4px_20px_rgba(255,65,3,0.15)]" : "bg-white/5 border-concrete/15 hover:border-concrete/30"}`}>
                       <div>
-                        <span className={`font-display text-xl uppercase ${isActive ? "text-vulcanico font-bold" : "text-white"}`}>
-                          {p.name}
-                        </span>
-                        {isActive && <span className="font-mono text-[9px] bg-vulcanico text-noturno px-1.5 py-0.5 rounded-sm uppercase ml-2">Ativo</span>}
-                        <span className="font-mono text-[10px] text-concrete block uppercase mt-1">
-                          {p.workouts.length} treinos
+                        <div className="flex items-center gap-2">
+                          <span className={`font-sans font-bold text-lg ${isActive ? "text-vulcanico" : "text-white"}`}>
+                            {p.name}
+                          </span>
+                          {isActive && <span className="font-sans text-[10px] font-bold bg-vulcanico text-white px-2 py-0.5 rounded-md uppercase">Ativo</span>}
+                        </div>
+                        <span className="font-mono text-xs text-concrete block mt-1">
+                          {p.workouts.length} treino(s)
                         </span>
                       </div>
                       <div className="flex items-center gap-3">

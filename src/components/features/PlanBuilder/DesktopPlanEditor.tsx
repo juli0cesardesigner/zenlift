@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useMemo, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { ChevronRight, ArrowLeft, Save, Plus, Edit3, Check, Trash2, Clock, Dumbbell, Play, X, Settings, Info, Search, List, Filter, Flame, Copy } from 'lucide-react';
+import { ChevronRight, ArrowLeft, Save, Plus, Edit3, Check, Trash2, Clock, Dumbbell, Play, X, Settings, Info, Search, List, Filter, Flame, Copy, ChevronUp, ChevronDown } from 'lucide-react';
 import { ExerciseDef, PlannedSet } from '../../../types';
 import { muscleColors } from '../../../lib/constants';
 
@@ -206,16 +206,32 @@ export function DesktopPlanEditor(props: any) {
                             <div className="flex justify-between items-center">
                               <span className="font-display text-lg text-white uppercase tracking-wider">{w.name}</span>
                               
-  <div className="flex items-center gap-1">
-    {activeWorkout?.id === w.id && <ChevronRight size={18} className="text-vulcanico" />}
-    <button 
-      onClick={(e) => { e.stopPropagation(); handleCloneWorkout(w); }} 
-      className="p-1.5 text-concrete hover:text-white hover:bg-white/10 rounded-md transition-colors" 
-      title="Duplicar Treino"
-    >
-      <Copy size={14} />
-    </button>
-  </div>
+                              <div className="flex items-center gap-1">
+                                <button 
+                                  disabled={index === 0}
+                                  onClick={(e) => { e.stopPropagation(); handleMoveWorkout && handleMoveWorkout(w.id, 'up'); }} 
+                                  className="p-1 text-concrete hover:text-vulcanico disabled:opacity-20 hover:bg-white/10 rounded transition-colors" 
+                                  title="Mover Treino para Cima"
+                                >
+                                  <ChevronUp size={14} />
+                                </button>
+                                <button 
+                                  disabled={index === editingPlan.workouts.length - 1}
+                                  onClick={(e) => { e.stopPropagation(); handleMoveWorkout && handleMoveWorkout(w.id, 'down'); }} 
+                                  className="p-1 text-concrete hover:text-vulcanico disabled:opacity-20 hover:bg-white/10 rounded transition-colors" 
+                                  title="Mover Treino para Baixo"
+                                >
+                                  <ChevronDown size={14} />
+                                </button>
+                                {activeWorkout?.id === w.id && <ChevronRight size={18} className="text-vulcanico" />}
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleCloneWorkout(w); }} 
+                                  className="p-1.5 text-concrete hover:text-white hover:bg-white/10 rounded-md transition-colors" 
+                                  title="Duplicar Treino"
+                                >
+                                  <Copy size={14} />
+                                </button>
+                              </div>
 
                             </div>
                             <span className="font-mono text-[10px] text-concrete uppercase">{w.exercises.length} Exercícios</span>

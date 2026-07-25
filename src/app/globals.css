@@ -1,34 +1,13 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: 'IBM Plex Sans Bold';
-  src: url('/fonts/IBMPlexSans-Bold.ttf') format('truetype');
-  font-weight: 700;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'IBM Plex Sans';
-  src: url('/fonts/IBMPlexSans-Regular.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'IBM Plex Sans Condensed';
-  src: url('/fonts/IBMPlexSans_Condensed-Medium.ttf') format('truetype');
-  font-weight: 500;
-  font-style: normal;
-}
-
 @theme {
   --color-vulcanico: #FF4103;
-  --color-concrete: #555555;
+  --color-concrete: #8A99A8;
   --color-noturno: #001621;
 
-  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'IBM Plex Sans Bold', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Sans Condensed', ui-monospace, SFMono-Regular, monospace;
+  --font-sans: var(--font-sans), 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-sans), 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-mono), 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 }
 
 :root {
@@ -46,9 +25,34 @@ html, body {
   -webkit-user-select: none;
   user-select: none;
   touch-action: manipulation;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Hide scrollbar for brutalist PWA look */
+/* Tabular figures for aligned timer / numbers */
+.font-mono {
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+/* Custom subtle scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+  display: block;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 22, 33, 0.5);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(138, 153, 168, 0.25);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 65, 3, 0.5);
+}
+
+/* Hide scrollbars for brutalist look where requested */
 ::-webkit-scrollbar {
   display: none;
 }
