@@ -228,19 +228,29 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                           : undefined
                       }
                     >
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex flex-col gap-1 w-full max-w-[65%]">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="font-display text-2xl uppercase text-vulcanico leading-tight">
-                                {exDef?.name || "Desconhecido"}
-                              </h3>
-                              {ae.supersetGroupId && (
-                                <span className="text-[9px] font-mono uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-bold tracking-wider">
-                                  Biset/Conjugado
-                                </span>
-                              )}
+                        {/* Exercise Title & Header Controls (2-Line Responsive Layout) */}
+                        <div className="flex flex-col gap-2 mb-3">
+                          {/* Line 1: Exercise Name Full Width */}
+                          <div className="flex justify-between items-center w-full">
+                            <h3 className="font-display text-2xl uppercase text-vulcanico leading-tight truncate">
+                              {exDef?.name || "Desconhecido"}
+                            </h3>
+                            {isExerciseCompleted && (
+                              <button
+                                onClick={() => setExpandedCompletedExercises(prev => ({ ...prev, [ae.id]: false }))}
+                                className="text-concrete hover:text-white p-0.5 shrink-0 ml-2"
+                                title="Recolher Exercício"
+                              >
+                                <ChevronUp size={18} />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Line 2: Actions, Timer & Muscle Badge */}
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               {!isExerciseCompleted && (
-                                <div className="flex gap-1.5">
+                                <>
                                   {distance === 0 && activeWorkout.exercises.length > 1 && (
                                     <button 
                                       onClick={() => handleSkipExercise(ae.id)}
@@ -252,47 +262,45 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                   )}
                                   <button 
                                     onClick={() => setReplacingActiveExerciseId(ae.id)}
-                                    className="text-[9px] font-mono uppercase bg-concrete/10 hover:bg-concrete/20 text-vulcanico hover:text-white px-2 py-1 rounded border border-concrete/20 transition-colors"
+                                    className="text-[9px] font-mono uppercase bg-concrete/10 hover:bg-concrete/20 text-vulcanico hover:text-white px-2 py-1 rounded border border-concrete/20 transition-colors font-bold"
                                     title="Substituir por outro exercício"
                                   >
                                     Substituir
                                   </button>
-                                </div>
+                                </>
+                              )}
+                              {ae.supersetGroupId && (
+                                <span className="text-[9px] font-mono uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-bold tracking-wider">
+                                  Biset/Conjugado
+                                </span>
                               )}
                             </div>
-                            {isValidVideoUrl(exDef?.videoUrl) && !isQueued && (
-                              <div className="w-full mt-2 mb-2 rounded-lg overflow-hidden border border-concrete/20 bg-black">
-                                <video 
-                                  src={exDef?.videoUrl} 
-                                  className="w-full h-auto max-h-[160px] object-cover mx-auto" 
-                                  autoPlay 
-                                  loop 
-                                  muted 
-                                  playsInline 
-                                />
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {isExerciseCompleted && (
-                              <button
-                                onClick={() => setExpandedCompletedExercises(prev => ({ ...prev, [ae.id]: false }))}
-                                className="text-concrete hover:text-white p-0.5"
-                                title="Recolher Exercício"
-                              >
-                                <ChevronUp size={18} />
-                              </button>
-                            )}
-                            {ae.elapsedSeconds !== undefined && ae.elapsedSeconds > 0 && (
-                              <span className="font-mono text-[10px] text-vulcanico bg-vulcanico/10 border border-vulcanico/20 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
-                                <Clock size={11} className={!isQueued && !isExerciseCompleted ? "animate-pulse" : ""} />
-                                {formatTime(ae.elapsedSeconds * 1000)}
+
+                            <div className="flex items-center gap-1.5">
+                              {ae.elapsedSeconds !== undefined && ae.elapsedSeconds > 0 && (
+                                <span className="font-mono text-[10px] text-vulcanico bg-vulcanico/10 border border-vulcanico/20 px-2 py-0.5 rounded flex items-center gap-1 font-bold">
+                                  <Clock size={11} className={!isQueued && !isExerciseCompleted ? "animate-pulse" : ""} />
+                                  {formatTime(ae.elapsedSeconds * 1000)}
+                                </span>
+                              )}
+                              <span className="font-mono text-[10px] text-concrete uppercase bg-concrete/10 px-2 py-0.5 rounded font-semibold">
+                                {exDef?.muscle || "Geral"}
                               </span>
-                            )}
-                            <span className="font-mono text-[10px] text-concrete uppercase bg-concrete/10 px-2 py-0.5 rounded">
-                              {exDef?.muscle || "Geral"}
-                            </span>
+                            </div>
                           </div>
+
+                          {isValidVideoUrl(exDef?.videoUrl) && !isQueued && (
+                            <div className="w-full mt-1 mb-2 rounded-lg overflow-hidden border border-concrete/20 bg-black">
+                              <video 
+                                src={exDef?.videoUrl} 
+                                className="w-full h-auto max-h-[160px] object-cover mx-auto" 
+                                autoPlay 
+                                loop 
+                                muted 
+                                playsInline 
+                              />
+                            </div>
+                          )}
                         </div>
 
                         {ae.overloadSuggestion && distance === 0 && !isExerciseCompleted && (
