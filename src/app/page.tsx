@@ -1976,19 +1976,40 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
         const exDef = exerciseMap[pe.exerciseId];
         let suggestedW: string | undefined = undefined;
         let suggestedR: string | undefined = undefined;
+        let suggestedWP2: string | undefined = undefined;
+        let suggestedRP2: string | undefined = undefined;
         let overloadSuggestion: string | undefined = undefined;
 
-        if (exDef) {
-          const performances: { weight: number, reps: number, date: number }[] = [];
+        // Per-Partner Historical Performance Lookup
+        const getPartnerPerformance = (exerciseName: string, partnerName?: string) => {
+          const performances: { weight: number; reps: number; date: number }[] = [];
           
           history.filter(log => !log.isDeleted && (log.workoutType || "rotina") === "rotina").forEach(log => {
+            let partnerRole: "p1" | "p2" | "any" = "any";
+
+            if (partnerName && partnerName.trim()) {
+              const target = partnerName.trim().toLowerCase();
+              const p1 = log.partner1Name?.trim().toLowerCase();
+              const p2 = log.partner2Name?.trim().toLowerCase();
+
+              if (log.sessionMode === "dual") {
+                if (p1 === target) partnerRole = "p1";
+                else if (p2 === target) partnerRole = "p2";
+                else return; // Partner didn't participate in this log!
+              } else {
+                if (p1 && p1 !== target) partnerRole = "any";
+              }
+            }
+
             log.exercises.forEach(he => {
-              if (he.name === exDef.name) {
+              if (he.name === exerciseName) {
                 let maxW = 0;
                 let maxR = 0;
                 he.sets.forEach(hs => {
-                  const w = parseFloat(hs.weight) || 0;
-                  const r = parseInt(hs.reps) || 0;
+                  const rawW = partnerRole === "p2" ? (hs.weightP2 || hs.weight) : hs.weight;
+                  const rawR = partnerRole === "p2" ? (hs.repsP2 || hs.reps) : hs.reps;
+                  const w = parseFloat(rawW) || 0;
+                  const r = parseInt(rawR) || 0;
                   if (w > maxW || (w === maxW && r > maxR)) {
                     maxW = w;
                     maxR = r;
@@ -2002,21 +2023,33 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
           });
 
           performances.sort((a, b) => b.date - a.date);
+          return performances;
+        };
 
-          if (performances.length > 0) {
-            const lastP = performances[0];
-            suggestedW = lastP.weight.toString();
-            suggestedR = lastP.reps.toString();
+        if (exDef) {
+          const p1Perf = getPartnerPerformance(exDef.name, sessionMode === "dual" ? partner1Name : undefined);
+          const p2Perf = getPartnerPerformance(exDef.name, sessionMode === "dual" ? partner2Name : undefined);
 
-            if (performances.length >= 2) {
-              const prevP = performances[1];
-              if (lastP.weight === prevP.weight && lastP.reps === prevP.reps && lastP.weight > 0) {
-                const step = lastP.weight >= 40 ? 5 : 2; // +5kg for heavy exercises, +2kg for lighter ones
-                const newWeight = lastP.weight + step;
+          if (p1Perf.length > 0) {
+            const lastP1 = p1Perf[0];
+            suggestedW = lastP1.weight.toString();
+            suggestedR = lastP1.reps.toString();
+
+            if (p1Perf.length >= 2) {
+              const prevP1 = p1Perf[1];
+              if (lastP1.weight === prevP1.weight && lastP1.reps === prevP1.reps && lastP1.weight > 0) {
+                const step = lastP1.weight >= 40 ? 5 : 2; // +5kg for heavy, +2kg for light
+                const newWeight = lastP1.weight + step;
                 suggestedW = newWeight.toString();
-                overloadSuggestion = `Você já fez ${lastP.reps}x ${lastP.weight}kg por 2 treinos seguidos. Tentar ${newWeight}kg hoje?`;
+                overloadSuggestion = `Você já fez ${lastP1.reps}x ${lastP1.weight}kg por 2 treinos seguidos. Tentar ${newWeight}kg hoje?`;
               }
             }
+          }
+
+          if (p2Perf.length > 0) {
+            const lastP2 = p2Perf[0];
+            suggestedWP2 = lastP2.weight.toString();
+            suggestedRP2 = lastP2.reps.toString();
           }
         }
 
@@ -2041,8 +2074,8 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
             completedP2: false,
             suggestedWeight: idx === 0 ? suggestedW : undefined,
             suggestedReps: idx === 0 ? suggestedR : undefined,
-            suggestedWeightP2: idx === 0 ? suggestedW : undefined,
-            suggestedRepsP2: idx === 0 ? suggestedR : undefined,
+            suggestedWeightP2: idx === 0 ? (suggestedWP2 || suggestedW) : undefined,
+            suggestedRepsP2: idx === 0 ? (suggestedRP2 || suggestedR) : undefined,
             methodType: ps.methodType,
             customMethodName: ps.customMethodName,
             dropCount: ps.dropCount,
