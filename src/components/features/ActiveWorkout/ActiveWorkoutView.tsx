@@ -80,7 +80,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
 
           {/* Active Workout Screen Scroll */}
           <div 
-            className="flex-1 overflow-y-auto p-6 pb-40 relative"
+            className="flex-1 overflow-y-auto p-3 sm:p-5 pb-36 relative"
             onScroll={(e) => {
               if (!blurMaskRef.current) return;
               const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
@@ -338,12 +338,12 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
 
                         {/* Sets Header */}
                         {activeWorkout.sessionMode === "dual" ? (
-                          <div className="grid grid-cols-12 font-mono text-[10px] text-cyan-400 uppercase mb-2 text-center font-bold">
-                            <div className="col-span-2">Série</div>
+                          <div className="grid grid-cols-12 font-mono text-[10px] text-cyan-400 uppercase mb-2 text-center font-bold px-0.5">
+                            <div className="col-span-1">Série</div>
                             <div className="col-span-2">Alvo</div>
-                            <div className="col-span-8 flex justify-around">
-                              <span className="text-vulcanico">{activeWorkout.partner1Name || "P1"}</span>
-                              <span className="text-cyan-400">{activeWorkout.partner2Name || "P2"}</span>
+                            <div className="col-span-9 flex justify-around">
+                              <span className="text-vulcanico font-extrabold">{activeWorkout.partner1Name || "P1"}</span>
+                              <span className="text-cyan-400 font-extrabold">{activeWorkout.partner2Name || "P2"}</span>
                             </div>
                           </div>
                         ) : (
@@ -380,7 +380,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                   isFullyCompleted ? "bg-vulcanico/10 opacity-70" : "bg-concrete/5"
                                 } ${isActiveSet ? "ring-2 ring-vulcanico shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse" : ""}`}
                               >
-                                <div className="col-span-2 font-mono text-xs flex flex-col items-center justify-center">
+                                <div className={`${activeWorkout.sessionMode === "dual" ? "col-span-1" : "col-span-2"} font-mono text-xs flex flex-col items-center justify-center`}>
                                   <span className="text-white font-bold">{sIdx + 1}</span>
                                   <div className="flex flex-wrap gap-0.5 mt-0.5 justify-center">
                                     {(() => {
@@ -414,15 +414,15 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                 </div>
 
                                 {activeWorkout.sessionMode === "dual" ? (
-                                  <div className="col-span-8 grid grid-cols-2 gap-2 px-1">
+                                  <div className="col-span-9 grid grid-cols-2 gap-1.5 px-0.5">
                                     {/* P1 Box */}
-                                    <div className={`p-2 rounded-lg border flex items-center justify-between gap-1 transition-all ${
+                                    <div className={`p-1.5 rounded-lg border flex items-center justify-between gap-1 transition-all ${
                                       set.completed ? "bg-vulcanico/20 border-vulcanico/50" : "bg-black/30 border-white/10"
                                     }`}>
-                                      <span className="font-mono text-[9px] text-vulcanico font-bold truncate max-w-[55px]">
+                                      <span className="font-mono text-[9px] text-vulcanico font-bold truncate max-w-[42px] sm:max-w-[65px]">
                                         {activeWorkout.partner1Name || "P1"}
                                       </span>
-                                      <div className="flex items-center gap-1 font-mono text-xs">
+                                      <div className="flex items-center gap-0.5 font-mono text-xs">
                                         <button
                                           onClick={() => {
                                             if (!set.completed) {
@@ -438,7 +438,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                             }
                                           }}
                                           disabled={set.completed}
-                                          className={`px-1.5 py-0.5 rounded border border-concrete/20 ${!set.weight && set.suggestedWeight ? 'text-concrete' : 'text-white'}`}
+                                          className={`px-1 py-0.5 rounded border border-concrete/20 ${!set.weight && set.suggestedWeight ? 'text-concrete' : 'text-white'}`}
                                         >
                                           {set.weight || set.suggestedWeight || "0"}<span className="text-[9px] text-concrete">kg</span>
                                         </button>
@@ -458,7 +458,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                             }
                                           }}
                                           disabled={set.completed}
-                                          className={`px-1.5 py-0.5 rounded border border-concrete/20 ${!set.reps && set.suggestedReps ? 'text-concrete' : 'text-white'}`}
+                                          className={`px-1 py-0.5 rounded border border-concrete/20 ${!set.reps && set.suggestedReps ? 'text-concrete' : 'text-white'}`}
                                         >
                                           {set.reps || set.suggestedReps || "0"}
                                         </button>
@@ -468,23 +468,23 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                            triggerHapticFeedback('medium');
                                            handleUpdateActiveSet(ae.id, set.id, "completed", !set.completed, "p1");
                                          }}
-                                        className={`w-6 h-6 rounded flex items-center justify-center transition-colors shrink-0 ${
-                                          set.completed ? "bg-vulcanico text-noturno" : "bg-concrete/20 text-concrete hover:text-white"
+                                        className={`w-7 h-7 rounded-md flex items-center justify-center transition-all shrink-0 ${
+                                          set.completed ? "bg-vulcanico text-noturno font-bold shadow-[0_0_8px_#FF4103]" : "bg-concrete/20 text-concrete hover:text-white border border-white/10"
                                         }`}
                                         title={`Marcar concluído para ${activeWorkout.partner1Name || "P1"}`}
                                       >
-                                        {set.completed ? <Check size={14} strokeWidth={3} /> : <Square size={14} />}
+                                        {set.completed ? <Check size={16} strokeWidth={3} /> : <Square size={16} />}
                                       </button>
                                     </div>
 
                                     {/* P2 Box */}
-                                    <div className={`p-2 rounded-lg border flex items-center justify-between gap-1 transition-all ${
+                                    <div className={`p-1.5 rounded-lg border flex items-center justify-between gap-1 transition-all ${
                                       set.completedP2 ? "bg-cyan-950/40 border-cyan-500/50" : "bg-black/30 border-white/10"
                                     }`}>
-                                      <span className="font-mono text-[9px] text-cyan-400 font-bold truncate max-w-[55px]">
+                                      <span className="font-mono text-[9px] text-cyan-400 font-bold truncate max-w-[42px] sm:max-w-[65px]">
                                         {activeWorkout.partner2Name || "P2"}
                                       </span>
-                                      <div className="flex items-center gap-1 font-mono text-xs">
+                                      <div className="flex items-center gap-0.5 font-mono text-xs">
                                         <button
                                           onClick={() => {
                                             if (!set.completedP2) {
@@ -500,7 +500,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                             }
                                           }}
                                           disabled={set.completedP2}
-                                          className={`px-1.5 py-0.5 rounded border border-concrete/20 ${!set.weightP2 && set.suggestedWeightP2 ? 'text-concrete' : 'text-white'}`}
+                                          className={`px-1 py-0.5 rounded border border-concrete/20 ${!set.weightP2 && set.suggestedWeightP2 ? 'text-concrete' : 'text-white'}`}
                                         >
                                           {set.weightP2 || set.suggestedWeightP2 || "0"}<span className="text-[9px] text-concrete">kg</span>
                                         </button>
@@ -520,7 +520,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                             }
                                           }}
                                           disabled={set.completedP2}
-                                          className={`px-1.5 py-0.5 rounded border border-concrete/20 ${!set.repsP2 && set.suggestedRepsP2 ? 'text-concrete' : 'text-white'}`}
+                                          className={`px-1 py-0.5 rounded border border-concrete/20 ${!set.repsP2 && set.suggestedRepsP2 ? 'text-concrete' : 'text-white'}`}
                                         >
                                           {set.repsP2 || set.suggestedRepsP2 || "0"}
                                         </button>
@@ -530,12 +530,12 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                            triggerHapticFeedback('medium');
                                            handleUpdateActiveSet(ae.id, set.id, "completed", !set.completedP2, "p2");
                                          }}
-                                        className={`w-6 h-6 rounded flex items-center justify-center transition-colors shrink-0 ${
-                                          set.completedP2 ? "bg-cyan-500 text-noturno" : "bg-concrete/20 text-concrete hover:text-white"
+                                        className={`w-7 h-7 rounded-md flex items-center justify-center transition-all shrink-0 ${
+                                          set.completedP2 ? "bg-cyan-500 text-noturno font-bold shadow-[0_0_8px_#06b6d4]" : "bg-concrete/20 text-concrete hover:text-white border border-white/10"
                                         }`}
                                         title={`Marcar concluído para ${activeWorkout.partner2Name || "P2"}`}
                                       >
-                                        {set.completedP2 ? <Check size={14} strokeWidth={3} /> : <Square size={14} />}
+                                        {set.completedP2 ? <Check size={16} strokeWidth={3} /> : <Square size={16} />}
                                       </button>
                                     </div>
                                   </div>
