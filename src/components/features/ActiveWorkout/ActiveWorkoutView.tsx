@@ -417,12 +417,9 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                   <div className="col-span-9 grid grid-cols-2 gap-1.5 px-0.5">
                                     {/* P1 Box */}
                                     <div className={`p-1.5 rounded-lg border flex items-center justify-between gap-1 transition-all ${
-                                      set.completed ? "bg-vulcanico/20 border-vulcanico/50" : "bg-black/30 border-white/10"
+                                      set.completed ? "bg-vulcanico/20 border-vulcanico/50 shadow-[0_0_10px_rgba(255,65,3,0.15)]" : "bg-black/30 border-white/10"
                                     }`}>
-                                      <span className="font-mono text-[9px] text-vulcanico font-bold truncate max-w-[42px] sm:max-w-[65px]">
-                                        {activeWorkout.partner1Name || "P1"}
-                                      </span>
-                                      <div className="flex items-center gap-0.5 font-mono text-xs">
+                                      <div className="flex items-center justify-center gap-1 font-mono text-xs flex-1">
                                         <button
                                           onClick={() => {
                                             if (!set.completed) {
@@ -438,11 +435,11 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                             }
                                           }}
                                           disabled={set.completed}
-                                          className={`px-1 py-0.5 rounded border border-concrete/20 ${!set.weight && set.suggestedWeight ? 'text-concrete' : 'text-white'}`}
+                                          className={`px-1.5 py-1 rounded border transition-colors ${!set.weight && set.suggestedWeight ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
                                         >
-                                          {set.weight || set.suggestedWeight || "0"}<span className="text-[9px] text-concrete">kg</span>
+                                          {set.weight || set.suggestedWeight || "0"}<span className="text-[9px] text-concrete font-normal ml-0.5">kg</span>
                                         </button>
-                                        <span className="text-concrete text-[10px]">×</span>
+                                        <span className="text-concrete text-[10px] px-0.5">×</span>
                                         <button
                                           onClick={() => {
                                             if (!set.completed) {
@@ -458,7 +455,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                             }
                                           }}
                                           disabled={set.completed}
-                                          className={`px-1 py-0.5 rounded border border-concrete/20 ${!set.reps && set.suggestedReps ? 'text-concrete' : 'text-white'}`}
+                                          className={`px-1.5 py-1 rounded border transition-colors ${!set.reps && set.suggestedReps ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
                                         >
                                           {set.reps || set.suggestedReps || "0"}
                                         </button>
@@ -479,12 +476,9 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
 
                                     {/* P2 Box */}
                                     <div className={`p-1.5 rounded-lg border flex items-center justify-between gap-1 transition-all ${
-                                      set.completedP2 ? "bg-cyan-950/40 border-cyan-500/50" : "bg-black/30 border-white/10"
+                                      set.completedP2 ? "bg-cyan-950/40 border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.15)]" : "bg-black/30 border-white/10"
                                     }`}>
-                                      <span className="font-mono text-[9px] text-cyan-400 font-bold truncate max-w-[42px] sm:max-w-[65px]">
-                                        {activeWorkout.partner2Name || "P2"}
-                                      </span>
-                                      <div className="flex items-center gap-0.5 font-mono text-xs">
+                                      <div className="flex items-center justify-center gap-1 font-mono text-xs flex-1">
                                         <button
                                           onClick={() => {
                                             if (!set.completedP2) {
@@ -500,11 +494,11 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                             }
                                           }}
                                           disabled={set.completedP2}
-                                          className={`px-1 py-0.5 rounded border border-concrete/20 ${!set.weightP2 && set.suggestedWeightP2 ? 'text-concrete' : 'text-white'}`}
+                                          className={`px-1.5 py-1 rounded border transition-colors ${!set.weightP2 && set.suggestedWeightP2 ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
                                         >
-                                          {set.weightP2 || set.suggestedWeightP2 || "0"}<span className="text-[9px] text-concrete">kg</span>
+                                          {set.weightP2 || set.suggestedWeightP2 || "0"}<span className="text-[9px] text-concrete font-normal ml-0.5">kg</span>
                                         </button>
-                                        <span className="text-concrete text-[10px]">×</span>
+                                        <span className="text-concrete text-[10px] px-0.5">×</span>
                                         <button
                                           onClick={() => {
                                             if (!set.completedP2) {
@@ -520,7 +514,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                             }
                                           }}
                                           disabled={set.completedP2}
-                                          className={`px-1 py-0.5 rounded border border-concrete/20 ${!set.repsP2 && set.suggestedRepsP2 ? 'text-concrete' : 'text-white'}`}
+                                          className={`px-1.5 py-1 rounded border transition-colors ${!set.repsP2 && set.suggestedRepsP2 ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
                                         >
                                           {set.repsP2 || set.suggestedRepsP2 || "0"}
                                         </button>
