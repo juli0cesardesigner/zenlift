@@ -20,61 +20,68 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
 {activeWorkout && !isWorkoutMinimized && (
         <div className="absolute inset-0 z-40 bg-noturno flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="flex-none p-6 pb-4 border-b border-concrete/20 flex justify-between items-center bg-noturno z-10">
-            <div>
-              <h2 className="font-display text-2xl uppercase text-white leading-none">{activeWorkout.name}</h2>
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveWorkout((prev: any) => prev ? {
-                      ...prev,
-                      workoutType: (prev.workoutType || "rotina") === "rotina" ? "forca" : "rotina"
-                    } : null);
-                  }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider border transition-all ${
-                    currentWorkoutType === "forca"
-                      ? "bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30"
-                      : "bg-concrete/10 text-concrete border-concrete/30 hover:border-concrete/50"
-                  }`}
-                  title="Clique para alternar entre Treino de Rotina e Treino de Força"
+          <div className="flex-none p-3.5 sm:p-5 border-b border-concrete/20 bg-noturno z-10 flex flex-col gap-2">
+            {/* Line 1: Workout Name on Left + Minimize & Cancel on Right */}
+            <div className="flex justify-between items-center w-full">
+              <h2 className="font-display text-2xl uppercase text-white leading-none truncate">
+                {activeWorkout.name}
+              </h2>
+              <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+                <button 
+                  onClick={() => setIsWorkoutMinimized(true)} 
+                  className="text-concrete hover:text-white transition-colors flex items-center gap-1 font-mono text-[10px] uppercase font-bold"
+                  title="Minimizar Treino"
                 >
-                  {currentWorkoutType === "forca" ? (
-                    <>
-                      <Zap size={12} className="text-amber-400 fill-amber-400" />
-                      <span className="font-bold">Treino de Força</span>
-                    </>
-                  ) : (
-                    <>
-                      <Dumbbell size={12} className="text-concrete" />
-                      <span>Treino de Rotina</span>
-                    </>
-                  )}
+                  <ChevronDown size={18} />
+                  <span>Minimizar</span>
                 </button>
-
-                {activeWorkout.sessionMode === "dual" && (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">
-                    <Users size={12} className="text-cyan-400" />
-                    <span>DUAL: {activeWorkout.partner1Name || "P1"} & {activeWorkout.partner2Name || "P2"}</span>
-                  </div>
-                )}
+                <button 
+                  onClick={handleCancelWorkout} 
+                  className="text-concrete hover:text-white transition-colors flex items-center gap-1 font-mono text-[10px] uppercase font-bold"
+                  title="Cancelar Treino"
+                >
+                  <X size={18} />
+                  <span>Cancelar</span>
+                </button>
               </div>
             </div>
-            <div className="flex items-center gap-6">
-              <button 
-                onClick={() => setIsWorkoutMinimized(true)} 
-                className="text-concrete hover:text-white transition-colors flex flex-col items-center"
+
+            {/* Line 2: Workout Type & Dual/Solo Mode Badges */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveWorkout((prev: any) => prev ? {
+                    ...prev,
+                    workoutType: (prev.workoutType || "rotina") === "rotina" ? "forca" : "rotina"
+                  } : null);
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider border transition-all ${
+                  currentWorkoutType === "forca"
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30"
+                    : "bg-concrete/10 text-concrete border-concrete/30 hover:border-concrete/50"
+                }`}
+                title="Clique para alternar entre Treino de Rotina e Treino de Força"
               >
-                <ChevronDown size={20} />
-                <span className="font-mono text-[9px] uppercase mt-1">Minimizar</span>
+                {currentWorkoutType === "forca" ? (
+                  <>
+                    <Zap size={12} className="text-amber-400 fill-amber-400" />
+                    <span className="font-bold">Treino de Força</span>
+                  </>
+                ) : (
+                  <>
+                    <Dumbbell size={12} className="text-concrete" />
+                    <span>Treino de Rotina</span>
+                  </>
+                )}
               </button>
-              <button 
-                onClick={handleCancelWorkout} 
-                className="text-concrete hover:text-white transition-colors flex flex-col items-center"
-              >
-                <X size={20} />
-                <span className="font-mono text-[9px] uppercase mt-1">Cancelar</span>
-              </button>
+
+              {activeWorkout.sessionMode === "dual" && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">
+                  <Users size={12} className="text-cyan-400" />
+                  <span>DUAL: {activeWorkout.partner1Name || "P1"} & {activeWorkout.partner2Name || "P2"}</span>
+                </div>
+              )}
             </div>
           </div>
 
