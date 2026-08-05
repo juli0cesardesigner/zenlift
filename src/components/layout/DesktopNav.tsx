@@ -1,5 +1,6 @@
 import React from 'react';
 import { Dumbbell, Plus, BarChart3, Settings, LogOut } from 'lucide-react';
+import { triggerHapticFeedback } from '../../lib/utils';
 
 interface DesktopNavProps {
   activeTab: string;
@@ -28,7 +29,10 @@ export function DesktopNav({ activeTab, setActiveTab }: DesktopNavProps) {
           return (
             <button 
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                triggerHapticFeedback('light');
+                setActiveTab(item.id);
+              }}
               className={`flex flex-col items-center justify-center gap-1.5 py-3 px-1 rounded-xl transition-all duration-200 w-full group relative ${
                 isActive 
                   ? "bg-vulcanico/15 text-white border border-vulcanico/30 shadow-[0_4px_20px_rgba(255,65,3,0.2)]" 

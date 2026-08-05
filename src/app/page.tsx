@@ -9,6 +9,7 @@ import { PlanEditorView } from '../components/features/PlanBuilder/PlanEditorVie
 import { PlanListView } from '../components/features/PlanBuilder/PlanListView';
 import { ExerciseLibraryView } from '../components/features/ExerciseLibrary/ExerciseLibraryView';
 import { HistoryView } from '../components/features/History/HistoryView';
+import { WorkoutShareModal } from '../components/ui/WorkoutShareModal';
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { 
@@ -37,7 +38,8 @@ import {
   AlertCircle,
   AlertTriangle,
   Upload,
-  Link
+  Link,
+  Users
 } from "lucide-react";
 import { supabase } from "./supabase";
 import { User as SupabaseUser } from "@supabase/supabase-js";
@@ -56,6 +58,7 @@ export default function AppContainer() {
   // Custom UI States
   const [toast, setToast] = useState<{message: string, type: 'success'|'error'|'info'} | null>(null);
   const [confirmConfig, setConfirmConfig] = useState<{isOpen: boolean, message: string, onConfirm: () => void} | null>(null);
+  const [shareWorkoutModalData, setShareWorkoutModalData] = useState<HistoryLog | null>(null);
 
   const showToast = (message: string, type: 'success'|'error'|'info' = 'info') => {
     setToast({message, type});
@@ -91,11 +94,21 @@ export default function AppContainer() {
     exerciseId: string;
     setId: string;
     field: "weight" | "reps";
+    partner?: "p1" | "p2";
     initialValue: string;
     suggestedValue: string;
   } | null>(null);
   const [modalTempValue, setModalTempValue] = useState<string>("");
   const [isEditingDirectly, setIsEditingDirectly] = useState(false);
+
+  // Starting Workout Mode Modal (Solo vs Dual)
+  const [startingWorkoutModal, setStartingWorkoutModal] = useState<{
+    workout: WorkoutTemplate;
+    planName: string;
+  } | null>(null);
+  const [selectedSessionMode, setSelectedSessionMode] = useState<"solo" | "dual">("solo");
+  const [partner1NameInput, setPartner1NameInput] = useState("Atleta 1");
+  const [partner2NameInput, setPartner2NameInput] = useState("Atleta 2");
 
   useEffect(() => {
     setIsEditingDirectly(false);
@@ -163,6 +176,7 @@ export default function AppContainer() {
     title?: string;
     message: string;
     onConfirm?: () => void;
+    onCancel?: () => void;
     confirmText?: string;
     cancelText?: string;
   } | null>(null);
@@ -575,10 +589,21 @@ export default function AppContainer() {
         volume_kg: log.volumeKg,
         idle_time_ms: log.idleTimeMs || 0,
         prs: log.prs || [],
+        workout_type: log.workoutType || "rotina",
+        session_mode: log.sessionMode || "solo",
+        partner1_name: log.partner1Name || null,
+        partner2_name: log.partner2Name || null,
+        volume_kg_p1: log.volumeKgP1 || null,
+        volume_kg_p2: log.volumeKgP2 || null,
         is_deleted: log.isDeleted || false
       }));
-      const { error: lErr } = await supabase.from("history_logs").upsert(logsToUpsert);
-      if (lErr) throw lErr;
+      let { error: lErr } = await supabase.from("history_logs").upsert(logsToUpsert);
+      if (lErr) {
+        // Fallback for legacy database schemas missing new columns
+        const legacyLogsToUpsert = logsToUpsert.map(({ workout_type, session_mode, partner1_name, partner2_name, volume_kg_p1, volume_kg_p2, ...rest }) => rest);
+        const { error: fallbackErr } = await supabase.from("history_logs").upsert(legacyLogsToUpsert);
+        if (fallbackErr) throw fallbackErr;
+      }
 
       // 2. Upsert log exercises and sets only for active (non-deleted) logs
       const activeLogs = localHistory.filter(log => !log.isDeleted);
@@ -618,6 +643,9 @@ export default function AppContainer() {
               is_to_failure: s.isToFailure,
               weight: s.weight,
               reps: s.reps,
+              weight_p2: s.weightP2 || null,
+              reps_p2: s.repsP2 || null,
+              completed_p2: s.completedP2 || false,
               method_type: s.methodType || null,
               custom_method_name: s.customMethodName || null,
               drop_count: s.dropCount || null,
@@ -630,8 +658,13 @@ export default function AppContainer() {
         });
       });
       if (setsToUpsert.length > 0) {
-        const { error: sErr } = await supabase.from("history_log_sets").upsert(setsToUpsert);
-        if (sErr) throw sErr;
+        let { error: sErr } = await supabase.from("history_log_sets").upsert(setsToUpsert);
+        if (sErr) {
+          // Fallback if sets table missing P2 columns
+          const legacySetsToUpsert = setsToUpsert.map(({ weight_p2, reps_p2, completed_p2, ...rest }) => rest);
+          const { error: sFallbackErr } = await supabase.from("history_log_sets").upsert(legacySetsToUpsert);
+          if (sFallbackErr) throw sFallbackErr;
+        }
       }
 
       const upsertedIds = activeLogs.map(log => log.id);
@@ -648,14 +681,15 @@ export default function AppContainer() {
 
   const pullHistoryFromSupabase = async (userId: string): Promise<HistoryLog[]> => {
     try {
+      let fetchedData: any[] | null = null;
       const { data, error } = await supabase
         .from("history_logs")
         .select(`
-          id, name, date, duration_ms, volume_kg,
+          id, name, date, duration_ms, volume_kg, workout_type, session_mode, partner1_name, partner2_name, volume_kg_p1, volume_kg_p2,
           history_log_exercises (
             id, name, elapsed_seconds, order_index, superset_group_id,
             history_log_sets (
-              id, min_reps, max_reps, is_drop_set, is_to_failure, weight, reps,
+              id, min_reps, max_reps, is_drop_set, is_to_failure, weight, reps, weight_p2, reps_p2, completed_p2,
               method_type, custom_method_name, drop_count, rest_pause_sets, rest_pause_seconds, failure_type, order_index
             )
           )
@@ -663,10 +697,30 @@ export default function AppContainer() {
         .eq("user_id", userId)
         .eq("is_deleted", false);
 
-      if (error) throw error;
-      if (!data) return [];
+      if (error) {
+        // Fallback query if history_logs table doesn't have workout_type / dual columns yet
+        const res = await supabase
+          .from("history_logs")
+          .select(`
+            id, name, date, duration_ms, volume_kg,
+            history_log_exercises (
+              id, name, elapsed_seconds, order_index, superset_group_id,
+              history_log_sets (
+                id, min_reps, max_reps, is_drop_set, is_to_failure, weight, reps,
+                method_type, custom_method_name, drop_count, rest_pause_sets, rest_pause_seconds, failure_type, order_index
+              )
+            )
+          `)
+          .eq("user_id", userId)
+          .eq("is_deleted", false);
+        fetchedData = res.data;
+        if (res.error) throw res.error;
+      } else {
+        fetchedData = data;
+      }
+      if (!fetchedData) return [];
 
-      return data.map((log: any) => {
+      return fetchedData.map((log: any) => {
         const exercises = (log.history_log_exercises || []).map((ex: any) => {
           const sets = (ex.history_log_sets || []).map((s: any) => ({
             minReps: s.min_reps,
@@ -675,6 +729,9 @@ export default function AppContainer() {
             isToFailure: s.is_to_failure,
             weight: s.weight,
             reps: s.reps,
+            weightP2: s.weight_p2 || undefined,
+            repsP2: s.reps_p2 || undefined,
+            completedP2: s.completed_p2 || false,
             methodType: s.method_type,
             customMethodName: s.custom_method_name,
             dropCount: s.drop_count,
@@ -701,6 +758,12 @@ export default function AppContainer() {
           volumeKg: log.volume_kg,
           idleTimeMs: log.idle_time_ms || 0,
           prs: log.prs || [],
+          workoutType: log.workout_type || "rotina",
+          sessionMode: log.session_mode || "solo",
+          partner1Name: log.partner1_name || undefined,
+          partner2Name: log.partner2_name || undefined,
+          volumeKgP1: log.volume_kg_p1 || undefined,
+          volumeKgP2: log.volume_kg_p2 || undefined,
           exercises
         };
       });
@@ -1886,6 +1949,19 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
 
   // --- ACTIONS: ACTIVE WORKOUT ---
   const handleStartWorkout = (workout: WorkoutTemplate, planName: string) => {
+    setSelectedSessionMode("solo");
+    setPartner1NameInput("Atleta 1");
+    setPartner2NameInput("Atleta 2");
+    setStartingWorkoutModal({ workout, planName });
+  };
+
+  const executeStartWorkout = (
+    workout: WorkoutTemplate,
+    planName: string,
+    sessionMode: "solo" | "dual" = "solo",
+    partner1Name: string = "Atleta 1",
+    partner2Name: string = "Atleta 2"
+  ) => {
     const session: ActiveWorkoutSession = {
       planId: activePlanId || "",
       workoutId: workout.id,
@@ -1893,6 +1969,9 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
       startTime: Date.now(),
       lastInteractionTime: Date.now(),
       totalIdleTimeMs: 0,
+      sessionMode,
+      partner1Name: sessionMode === "dual" ? partner1Name : undefined,
+      partner2Name: sessionMode === "dual" ? partner2Name : undefined,
       exercises: workout.exercises.map(pe => {
         const exDef = exerciseMap[pe.exerciseId];
         let suggestedW: string | undefined = undefined;
@@ -1902,7 +1981,7 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
         if (exDef) {
           const performances: { weight: number, reps: number, date: number }[] = [];
           
-          history.filter(log => !log.isDeleted).forEach(log => {
+          history.filter(log => !log.isDeleted && (log.workoutType || "rotina") === "rotina").forEach(log => {
             log.exercises.forEach(he => {
               if (he.name === exDef.name) {
                 let maxW = 0;
@@ -1956,9 +2035,14 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
             restSeconds: ps.restSeconds,
             weight: "",
             reps: "",
+            completed: false,
+            weightP2: "",
+            repsP2: "",
+            completedP2: false,
             suggestedWeight: idx === 0 ? suggestedW : undefined,
             suggestedReps: idx === 0 ? suggestedR : undefined,
-            completed: false,
+            suggestedWeightP2: idx === 0 ? suggestedW : undefined,
+            suggestedRepsP2: idx === 0 ? suggestedR : undefined,
             methodType: ps.methodType,
             customMethodName: ps.customMethodName,
             dropCount: ps.dropCount,
@@ -1974,19 +2058,28 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
     setElapsedTime(0);
     setRestTimer(null);
     setExpandedCompletedExercises({});
+    setStartingWorkoutModal(null);
   };
 
-
-
-  const handleUpdateActiveSet = (exerciseId: string, setId: string, field: "weight" | "reps" | "completed", value: any) => {
+  const handleUpdateActiveSet = (
+    exerciseId: string,
+    setId: string,
+    field: "weight" | "reps" | "completed",
+    value: any,
+    partner: "p1" | "p2" = "p1"
+  ) => {
     if (!activeWorkout) return;
+
+    const targetField = partner === "p2"
+      ? (field === "weight" ? "weightP2" : field === "reps" ? "repsP2" : "completedP2")
+      : field;
 
     const isCompleting = field === "completed" && value === true;
     let isLastSetOfWorkout = false;
 
     if (isCompleting) {
       isLastSetOfWorkout = activeWorkout.exercises.every(ex =>
-        ex.sets.every(s => s.id === setId ? true : s.completed)
+        ex.sets.every(s => s.id === setId ? true : (partner === "p2" ? s.completedP2 : s.completed))
       );
     }
 
@@ -2006,7 +2099,9 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
             const lastGroupEx = groupExercises[groupExercises.length - 1];
             const isLastExerciseInGroup = lastGroupEx ? lastGroupEx.id === ex.id : true;
 
-            if (field === "completed" && value === true && s.restSeconds > 0 && !s.completed && !isLastSetOfWorkout && isLastExerciseInGroup) {
+            const isAlreadyDone = partner === "p2" ? s.completedP2 : s.completed;
+
+            if (field === "completed" && value === true && s.restSeconds > 0 && !isAlreadyDone && !isLastSetOfWorkout && isLastExerciseInGroup) {
               const exDef = exerciseMap[ex.exerciseId];
               const setIndex = sIdx + 1;
               
@@ -2050,17 +2145,28 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
               });
             }
 
-            return { ...s, [field]: value };
+            return { ...s, [targetField]: value };
           });
 
           // Auto-propagate weight and reps to subsequent sets as placeholders if this is the first set and we just clicked "completed"
           if (field === "completed" && value === true && updatedSets[0].id === setId) {
-            const firstSetWeight = updatedSets[0].weight || updatedSets[0].suggestedWeight;
-            const firstSetReps = updatedSets[0].reps || updatedSets[0].suggestedReps;
-            for (let i = 1; i < updatedSets.length; i++) {
-              if (!updatedSets[i].completed) {
-                if (!updatedSets[i].weight && !updatedSets[i].suggestedWeight && firstSetWeight) updatedSets[i].suggestedWeight = firstSetWeight;
-                if (!updatedSets[i].reps && !updatedSets[i].suggestedReps && firstSetReps) updatedSets[i].suggestedReps = firstSetReps;
+            if (partner === "p1") {
+              const firstSetWeight = updatedSets[0].weight || updatedSets[0].suggestedWeight;
+              const firstSetReps = updatedSets[0].reps || updatedSets[0].suggestedReps;
+              for (let i = 1; i < updatedSets.length; i++) {
+                if (!updatedSets[i].completed) {
+                  if (!updatedSets[i].weight && !updatedSets[i].suggestedWeight && firstSetWeight) updatedSets[i].suggestedWeight = firstSetWeight;
+                  if (!updatedSets[i].reps && !updatedSets[i].suggestedReps && firstSetReps) updatedSets[i].suggestedReps = firstSetReps;
+                }
+              }
+            } else {
+              const firstSetWeight2 = updatedSets[0].weightP2 || updatedSets[0].suggestedWeightP2;
+              const firstSetReps2 = updatedSets[0].repsP2 || updatedSets[0].suggestedRepsP2;
+              for (let i = 1; i < updatedSets.length; i++) {
+                if (!updatedSets[i].completedP2) {
+                  if (!updatedSets[i].weightP2 && !updatedSets[i].suggestedWeightP2 && firstSetWeight2) updatedSets[i].suggestedWeightP2 = firstSetWeight2;
+                  if (!updatedSets[i].repsP2 && !updatedSets[i].suggestedRepsP2 && firstSetReps2) updatedSets[i].suggestedRepsP2 = firstSetReps2;
+                }
               }
             }
           }
@@ -2218,13 +2324,61 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
     setAddingExerciseToActiveWorkout(false);
   };
 
+  const updatePlanWithActiveExercises = (planId: string, workoutId: string, activeExercises: ActiveExercise[]) => {
+    setPlans(prevPlans => {
+      const updatedPlans = prevPlans.map(p => {
+        if (p.id !== planId) return p;
+        return {
+          ...p,
+          workouts: p.workouts.map(w => {
+            if (w.id !== workoutId) return w;
+            const newPlannedExercises: PlannedExercise[] = activeExercises.map(ae => ({
+              id: ae.id.startsWith("ae_") ? `pe_${crypto.randomUUID()}` : ae.id,
+              exerciseId: ae.exerciseId,
+              supersetGroupId: ae.supersetGroupId,
+              sets: ae.sets.map(s => ({
+                id: s.id.startsWith("as_") ? `ps_${crypto.randomUUID()}` : s.id,
+                minReps: s.minReps || 8,
+                maxReps: s.maxReps || 12,
+                isDropSet: !!s.isDropSet,
+                isToFailure: !!s.isToFailure,
+                restSeconds: s.restSeconds || 60,
+                methodType: s.methodType,
+                customMethodName: s.customMethodName,
+                dropCount: s.dropCount,
+                restPauseSets: s.restPauseSets,
+                restPauseSeconds: s.restPauseSeconds,
+                failureType: s.failureType
+              }))
+            }));
+            return {
+              ...w,
+              exercises: newPlannedExercises
+            };
+          })
+        };
+      });
+
+      localStorage.setItem("is_plans_v3", JSON.stringify(updatedPlans));
+      if (user) {
+        pushPlansToSupabase(user.id, updatedPlans);
+      }
+      return updatedPlans;
+    });
+    showToast("Plano de treino atualizado com a nova sequência!", "success");
+  };
+
   const handleFinishWorkout = () => {
     if (!activeWorkout) return;
 
     let totalVolume = 0;
+    let volumeKgP1 = 0;
+    let volumeKgP2 = 0;
+    const isDual = activeWorkout.sessionMode === "dual";
+
     const completedExercises = activeWorkout.exercises.map(ae => {
       const exDef = exerciseMap[ae.exerciseId];
-      const doneSets = ae.sets.filter(s => s.completed);
+      const doneSets = ae.sets.filter(s => s.completed || (isDual && s.completedP2));
 
       const mappedSets = doneSets.map(s => {
         const resolvedWeight = (exDef?.isTimeBased || exDef?.isRepsOnly)
@@ -2232,9 +2386,26 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
           : (s.weight || s.suggestedWeight || "0");
         const resolvedReps = s.reps || s.suggestedReps || "0";
 
-        const w = parseFloat(resolvedWeight) || 0;
-        const r = parseInt(resolvedReps) || 0;
-        totalVolume += (w * r);
+        const w1 = parseFloat(resolvedWeight) || 0;
+        const r1 = parseInt(resolvedReps) || 0;
+        const vol1 = w1 * r1;
+        totalVolume += vol1;
+        volumeKgP1 += vol1;
+
+        let resolvedWeightP2 = "";
+        let resolvedRepsP2 = "";
+        if (isDual) {
+          resolvedWeightP2 = (exDef?.isTimeBased || exDef?.isRepsOnly)
+            ? ""
+            : (s.weightP2 || s.suggestedWeightP2 || "0");
+          resolvedRepsP2 = s.repsP2 || s.suggestedRepsP2 || "0";
+
+          const w2 = parseFloat(resolvedWeightP2) || 0;
+          const r2 = parseInt(resolvedRepsP2) || 0;
+          const vol2 = w2 * r2;
+          totalVolume += vol2;
+          volumeKgP2 += vol2;
+        }
 
         return {
           minReps: s.minReps,
@@ -2243,6 +2414,9 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
           isToFailure: s.isToFailure,
           weight: resolvedWeight,
           reps: resolvedReps,
+          weightP2: isDual ? resolvedWeightP2 : undefined,
+          repsP2: isDual ? resolvedRepsP2 : undefined,
+          completedP2: isDual ? s.completedP2 : undefined,
           methodType: s.methodType,
           customMethodName: s.customMethodName,
           dropCount: s.dropCount,
@@ -2301,27 +2475,70 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
         idleTimeMs: finalIdleTime,
         volumeKg: Math.round(totalVolume),
         prs,
+        workoutType: activeWorkout.workoutType || "rotina",
+        sessionMode: activeWorkout.sessionMode || "solo",
+        partner1Name: activeWorkout.partner1Name,
+        partner2Name: activeWorkout.partner2Name,
+        volumeKgP1: isDual ? Math.round(volumeKgP1) : undefined,
+        volumeKgP2: isDual ? Math.round(volumeKgP2) : undefined,
         exercises: completedExercises
       };
 
-      setReviewingWorkoutLog(newLog);
-      
-      const d = new Date(activeWorkout.startTime);
-      // Adjust to local timezone to prevent offset issues with input type="date"
-      const localDate = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-      const localTime = d.toTimeString().split(' ')[0].slice(0, 5); // HH:MM
+      const proceedToReview = () => {
+        setReviewingWorkoutLog(newLog);
+        
+        const d = new Date(activeWorkout.startTime);
+        // Adjust to local timezone to prevent offset issues with input type="date"
+        const localDate = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        const localTime = d.toTimeString().split(' ')[0].slice(0, 5); // HH:MM
 
-      setReviewName(activeWorkout.name);
-      setReviewDate(localDate);
-      setReviewTime(localTime);
-      setReviewDurationMins(Math.floor((Date.now() - activeWorkout.startTime - finalIdleTime) / 60000).toString());
+        setReviewName(activeWorkout.name);
+        setReviewDate(localDate);
+        setReviewTime(localTime);
+        setReviewDurationMins(Math.floor((Date.now() - activeWorkout.startTime - finalIdleTime) / 60000).toString());
 
-      // Pause active workout while reviewing
-      setActiveWorkout(prev => prev ? {
-        ...prev,
-        isPaused: true,
-        pauseStartTime: prev.isPaused ? prev.pauseStartTime : Date.now()
-      } : null);
+        // Pause active workout while reviewing
+        setActiveWorkout(prev => prev ? {
+          ...prev,
+          isPaused: true,
+          pauseStartTime: prev.isPaused ? prev.pauseStartTime : Date.now()
+        } : null);
+      };
+
+      const currentPlan = plans.find(p => p.id === activeWorkout.planId);
+      const originalWorkout = currentPlan?.workouts.find(w => w.id === activeWorkout.workoutId);
+
+      let isSequenceModified = false;
+      if (originalWorkout) {
+        if (originalWorkout.exercises.length !== activeWorkout.exercises.length) {
+          isSequenceModified = true;
+        } else {
+          for (let i = 0; i < activeWorkout.exercises.length; i++) {
+            if (activeWorkout.exercises[i].exerciseId !== originalWorkout.exercises[i].exerciseId) {
+              isSequenceModified = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (isSequenceModified && originalWorkout && currentPlan) {
+        setDialog({
+          title: "Atualizar Plano de Treino?",
+          message: `Você alterou a sequência de exercícios durante este treino. Deseja atualizar a rotina "${originalWorkout.name}" no plano "${currentPlan.name}" com essa nova sequência?`,
+          confirmText: "Sim, Atualizar Plano",
+          cancelText: "Não, Apenas Histórico",
+          onConfirm: () => {
+            updatePlanWithActiveExercises(activeWorkout.planId, activeWorkout.workoutId, activeWorkout.exercises);
+            proceedToReview();
+          },
+          onCancel: () => {
+            proceedToReview();
+          }
+        });
+      } else {
+        proceedToReview();
+      }
     } else {
       // If no exercises completed, just cancel
       setActiveWorkout(null);
@@ -2861,7 +3078,10 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
               {dialog.onConfirm ? (
                 <>
                   <button
-                    onClick={() => setDialog(null)}
+                    onClick={() => {
+                      if (dialog.onCancel) dialog.onCancel();
+                      setDialog(null);
+                    }}
                     className="px-4 py-2 border border-concrete/30 hover:border-white font-mono text-[10px] uppercase rounded-lg text-concrete hover:text-white transition-colors"
                   >
                     {dialog.cancelText || "Cancelar"}
@@ -3178,7 +3398,7 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
 
             <div className="sticky bottom-0 bg-noturno/90 backdrop-blur-md p-6 border-t border-concrete/10">
               <button 
-                onClick={handleShare}
+                onClick={() => setShareWorkoutModalData(workoutSummary)}
                 className="w-full bg-vulcanico text-noturno font-display uppercase tracking-widest py-4 rounded-xl text-lg font-bold flex justify-center items-center gap-3 hover:bg-white transition-colors"
               >
                 Compartilhar Treino
@@ -3187,6 +3407,98 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
           </div>
         );
       })()}
+
+      {/* STARTING WORKOUT MODE SELECTION MODAL (Solo vs Dual) */}
+      {startingWorkoutModal && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
+          <div className="bg-noturno border border-concrete/30 p-6 max-w-sm w-full flex flex-col gap-6 rounded-2xl relative shadow-2xl">
+            <div className="flex justify-between items-center border-b border-concrete/10 pb-3">
+              <h3 className="font-display text-xl uppercase text-white tracking-wider font-bold">
+                Iniciar Treino
+              </h3>
+              <button
+                onClick={() => setStartingWorkoutModal(null)}
+                className="text-concrete hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <p className="font-mono text-xs text-concrete uppercase">Escolha a modalidade de treino:</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSessionMode("solo")}
+                  className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${
+                    selectedSessionMode === "solo"
+                      ? "bg-vulcanico/20 border-vulcanico text-white font-bold"
+                      : "bg-concrete/5 border-concrete/20 text-concrete hover:border-concrete/50"
+                  }`}
+                >
+                  <Dumbbell size={24} className={selectedSessionMode === "solo" ? "text-vulcanico" : "text-concrete"} />
+                  <span className="font-display text-sm uppercase">Solo (1 P)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedSessionMode("dual")}
+                  className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${
+                    selectedSessionMode === "dual"
+                      ? "bg-cyan-500/20 border-cyan-500 text-white font-bold"
+                      : "bg-concrete/5 border-concrete/20 text-concrete hover:border-concrete/50"
+                  }`}
+                >
+                  <Users size={24} className={selectedSessionMode === "dual" ? "text-cyan-400" : "text-concrete"} />
+                  <span className="font-display text-sm uppercase">Dual (Dupla)</span>
+                </button>
+              </div>
+            </div>
+
+            {selectedSessionMode === "dual" && (
+              <div className="flex flex-col gap-3 bg-black/40 p-4 rounded-xl border border-white/10 animate-fade-in">
+                <p className="font-mono text-[10px] text-cyan-400 uppercase font-bold">Nomes da Dupla:</p>
+                <div className="flex flex-col gap-2">
+                  <div>
+                    <label className="font-mono text-[9px] text-concrete uppercase">Parceiro 1</label>
+                    <input
+                      type="text"
+                      value={partner1NameInput}
+                      onChange={e => setPartner1NameInput(e.target.value)}
+                      className="w-full bg-noturno border border-concrete/30 rounded-lg px-3 py-1.5 font-mono text-xs text-white focus:outline-none focus:border-vulcanico"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-mono text-[9px] text-concrete uppercase">Parceiro 2</label>
+                    <input
+                      type="text"
+                      value={partner2NameInput}
+                      onChange={e => setPartner2NameInput(e.target.value)}
+                      className="w-full bg-noturno border border-concrete/30 rounded-lg px-3 py-1.5 font-mono text-xs text-white focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                executeStartWorkout(
+                  startingWorkoutModal.workout,
+                  startingWorkoutModal.planName,
+                  selectedSessionMode,
+                  partner1NameInput || "Atleta 1",
+                  partner2NameInput || "Atleta 2"
+                );
+              }}
+              className="w-full py-3.5 bg-vulcanico hover:bg-white text-noturno font-display uppercase tracking-widest text-sm rounded-xl font-bold transition-colors shadow-lg shadow-vulcanico/20 flex items-center justify-center gap-2"
+            >
+              <Play size={16} className="fill-noturno" />
+              Começar Treino
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* SYNC CONTROL CENTER / AUTH MODAL */}
       {isAuthModalOpen && (
@@ -3373,6 +3685,9 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
               </div>
             </motion.div>
           </div>
+        )}
+        {shareWorkoutModalData && (
+          <WorkoutShareModal workout={shareWorkoutModalData} onClose={() => setShareWorkoutModalData(null)} />
         )}
       </AnimatePresence>
 

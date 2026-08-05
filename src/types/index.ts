@@ -60,6 +60,8 @@ export type Plan = {
   isDeleted?: boolean;
 };
 
+export type SessionMode = "solo" | "dual";
+
 export type ActiveSet = {
   id: string;
   minReps: number;
@@ -70,6 +72,9 @@ export type ActiveSet = {
   weight: string;
   reps: string;
   completed: boolean;
+  weightP2?: string;
+  repsP2?: string;
+  completedP2?: boolean;
   methodType?: string;
   customMethodName?: string;
   dropCount?: number;
@@ -78,6 +83,8 @@ export type ActiveSet = {
   failureType?: string;
   suggestedWeight?: string;
   suggestedReps?: string;
+  suggestedWeightP2?: string;
+  suggestedRepsP2?: string;
 };
 
 export type ActiveExercise = {
@@ -89,6 +96,8 @@ export type ActiveExercise = {
   supersetGroupId?: string;
 };
 
+export type WorkoutType = "rotina" | "forca";
+
 export type ActiveWorkoutSession = {
   planId: string;
   workoutId: string;
@@ -99,6 +108,10 @@ export type ActiveWorkoutSession = {
   totalIdleTimeMs: number;
   isPaused?: boolean;
   pauseStartTime?: number;
+  workoutType?: WorkoutType;
+  sessionMode?: SessionMode;
+  partner1Name?: string;
+  partner2Name?: string;
 };
 
 export type HistoryLog = {
@@ -109,6 +122,12 @@ export type HistoryLog = {
   volumeKg: number;
   idleTimeMs?: number;
   prs?: string[];
+  workoutType?: WorkoutType;
+  sessionMode?: SessionMode;
+  partner1Name?: string;
+  partner2Name?: string;
+  volumeKgP1?: number;
+  volumeKgP2?: number;
   exercises: {
     name: string;
     elapsedSeconds?: number;
@@ -120,6 +139,9 @@ export type HistoryLog = {
       isToFailure: boolean;
       weight: string;
       reps: string;
+      weightP2?: string;
+      repsP2?: string;
+      completedP2?: boolean;
       methodType?: string;
       customMethodName?: string;
       dropCount?: number;
@@ -130,3 +152,80 @@ export type HistoryLog = {
   }[];
   isDeleted?: boolean;
 };
+
+export type ActiveInputModalState = {
+  exerciseId: string;
+  setId: string;
+  field: "weight" | "reps";
+  partner?: "p1" | "p2";
+  initialValue: string;
+  suggestedValue: string;
+};
+
+export type RestTimerState = {
+  exerciseId?: string;
+  setId?: string;
+  targetTime?: number;
+  duration?: number;
+  endTime?: number;
+  exerciseIndex?: number;
+  totalExercises?: number;
+  exerciseName?: string;
+  setIndex?: number;
+  nextExerciseName?: string;
+  nextExerciseLastWeight?: string;
+};
+
+export interface ActiveWorkoutViewProps {
+  activeWorkout: ActiveWorkoutSession | null;
+  isWorkoutMinimized: boolean;
+  setIsWorkoutMinimized: (value: boolean | ((prev: boolean) => boolean)) => void;
+  formatTime: (ms: number) => string;
+  handleEndWorkout?: () => void;
+  handleAddExerciseToActiveWorkout: (exercise: any) => void;
+  handleUpdateActiveSet: (exerciseId: string, setId: string, field: any, val: any, partner?: "p1" | "p2") => void;
+  handleToggleActiveSet?: (exerciseId: string, setId: string, partner?: "p1" | "p2") => void;
+  exerciseMap: Record<string, ExerciseDef>;
+  plans: Plan[];
+  isEditingDirectly: boolean;
+  setIsEditingDirectly: (value: boolean | ((prev: boolean) => boolean)) => void;
+  activeInputModal: ActiveInputModalState | null;
+  setActiveInputModal: (val: ActiveInputModalState | null) => void;
+  modalTempValue: string;
+  setModalTempValue: React.Dispatch<React.SetStateAction<string>>;
+  restTimer: RestTimerState | null;
+  setRestTimer: (val: any) => void;
+  restRemainingMs: number;
+  formatRestTime: (ms: number) => string;
+  handleAddRestTime: (sec: number) => void;
+  addingExerciseToActiveWorkout: boolean;
+  setAddingExerciseToActiveWorkout: (val: boolean) => void;
+  replacingActiveExerciseId: string | null;
+  setReplacingActiveExerciseId: (val: string | null) => void;
+  handleReplaceExerciseInActiveWorkout: (arg1: any, arg2?: any) => void;
+  exerciseSearchQuery: string;
+  setExerciseSearchQuery: (query: string) => void;
+  filteredExercises: ExerciseDef[];
+  filteredExercisesByMuscle: Record<string, ExerciseDef[]>;
+  slideX: number;
+  setSlideX: (x: number) => void;
+  isSliding: boolean;
+  setIsSliding: (val: boolean) => void;
+  handleFinishWorkout: () => void;
+  handleCancelWorkout: () => void;
+  setActiveWorkout: React.Dispatch<React.SetStateAction<ActiveWorkoutSession | null>>;
+  resolvedActiveExerciseIndex: number;
+  expandedCompletedExercises: Record<string, boolean>;
+  setExpandedCompletedExercises: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  handleSkipExercise: (exerciseId: string) => void;
+  globalActiveSetId?: string | null;
+  activeStopwatchSetId: string | null;
+  activeStopwatchElapsedMs: number;
+  setActiveStopwatchSetId: (id: string | null) => void;
+  setActiveStopwatchStartTime: (time: number | null) => void;
+  setActiveStopwatchElapsedMs: (ms: number | ((prev: number) => number)) => void;
+  handleAddActiveSet: (exerciseId: string) => void;
+  handleRemoveActiveSet: (exerciseId: string, setId: string) => void;
+  elapsedTime: number;
+  maxDrag?: number;
+}

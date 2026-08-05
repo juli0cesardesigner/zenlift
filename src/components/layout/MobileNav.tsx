@@ -1,5 +1,6 @@
 import React from 'react';
 import { Dumbbell, Plus, BarChart3 } from 'lucide-react';
+import { triggerHapticFeedback } from '../../lib/utils';
 
 export function MobileNav(props: any) {
   const { activeWorkout, isWorkoutMinimized, activeTab, setActiveTab } = props;
@@ -20,7 +21,10 @@ export function MobileNav(props: any) {
         return (
           <button 
             key={item.id}
-            onClick={() => setActiveTab(item.id)}
+            onClick={() => {
+              triggerHapticFeedback('light');
+              setActiveTab(item.id);
+            }}
             className={`flex flex-col items-center justify-center gap-1.5 py-2 px-5 rounded-2xl transition-all duration-200 ${
               isActive 
                 ? "bg-vulcanico/15 text-white shadow-[0_2px_12px_rgba(255,65,3,0.15)] border border-vulcanico/25" 

@@ -1,7 +1,9 @@
-// @ts-nocheck
 import React, { useMemo } from 'react';
-import { Activity, Trophy, Clock, Dumbbell, Target, Flame, Calendar, History } from 'lucide-react';
+import { Activity, Trophy, Clock, Dumbbell, Target, Flame, Calendar, History, Cpu, Sparkles } from 'lucide-react';
 import { muscleColors } from '../../../lib/constants';
+import { calculateMuscleRank, recommendOptimalMuscles } from '../../../lib/muscleRank';
+
+import { HistoryLog } from '../../../types';
 
 export function AdvancedStatsDashboard(props: any) {
   const { 
@@ -25,19 +27,28 @@ export function AdvancedStatsDashboard(props: any) {
     return donutSlices.reduce((prev: any, current: any) => (prev.sets > current.sets) ? prev : current);
   }, [donutSlices]);
 
+  // Page & Brin MuscleRank Engine
+  const muscleRankData = useMemo(() => {
+    return calculateMuscleRank(history || []);
+  }, [history]);
+
+  const recommendedMuscles = useMemo(() => {
+    return recommendOptimalMuscles(muscleRankData);
+  }, [muscleRankData]);
+
 
   // Muscle Recovery/Fatigue Logic (Last 7 Days)
   const muscleFatigue = useMemo(() => {
-    const fatigue = {};
+    const fatigue: Record<string, number> = {};
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     sevenDaysAgo.setHours(0,0,0,0);
     
     if (history && exerciseMapByName) {
-      history.forEach((log) => {
+      history.forEach((log: HistoryLog) => {
         const logDate = new Date(log.date);
         if (logDate >= sevenDaysAgo) {
-          log.exercises?.forEach((exLog) => {
+          log.exercises?.forEach((exLog: any) => {
              const def = exerciseMapByName[exLog.name];
              if (def) {
                 fatigue[def.muscle] = (fatigue[def.muscle] || 0) + exLog.sets.length;
@@ -240,6 +251,55 @@ export function AdvancedStatsDashboard(props: any) {
              <Activity size={200} className="absolute -bottom-10 -right-10 text-white/5 pointer-events-none group-hover:scale-110 transition-transform duration-1000" />
           </div>
 
+
+          {/* MUSCLERANK AI RECOVERY ENGINE (Page, Brin & Jensen Huang) */}
+          <div className="bg-gradient-to-br from-[#001E2E] to-[#00121C] border border-vulcanico/30 p-8 rounded-2xl shadow-2xl flex flex-col gap-6 relative overflow-hidden">
+            <div className="flex justify-between items-center z-10">
+              <div className="flex items-center gap-2 text-white">
+                <Cpu className="text-vulcanico animate-pulse" size={22} />
+                <h3 className="font-sans font-bold text-base uppercase tracking-wider">MuscleRank™ Recovery Engine</h3>
+              </div>
+              <span className="font-mono text-[9px] bg-vulcanico/20 text-vulcanico px-2.5 py-1 rounded-full font-bold uppercase tracking-widest border border-vulcanico/30 flex items-center gap-1">
+                <Sparkles size={10} /> AI Recommendation
+              </span>
+            </div>
+
+            {/* Optimal Muscles Recommended for Today */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col gap-2 z-10">
+              <span className="font-mono text-[10px] text-concrete uppercase tracking-widest font-bold">
+                Músculos Ideais para Treinar Hoje (Maior Nível de Recuperação):
+              </span>
+              <div className="flex gap-2 flex-wrap mt-1">
+                {recommendedMuscles.map(m => (
+                  <span key={m} className="bg-vulcanico text-noturno font-display text-sm font-extrabold uppercase px-3 py-1 rounded-lg shadow-[0_0_10px_rgba(255,65,3,0.4)]">
+                    {m}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Recovery Matrix breakdown */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 z-10">
+              {Object.values(muscleRankData).map(item => (
+                <div key={item.muscle} className="bg-black/40 border border-white/10 rounded-xl p-3 flex flex-col justify-between">
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-xs font-bold text-white uppercase">{item.muscle}</span>
+                    <span className={`w-2 h-2 rounded-full ${
+                      item.status === 'recuperado' ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' :
+                      item.status === 'em_recuperacao' ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24]' :
+                      'bg-red-500 shadow-[0_0_8px_#ef4444]'
+                    }`} />
+                  </div>
+                  <div className="mt-2 flex justify-between items-baseline">
+                    <span className="font-mono text-lg font-bold text-vulcanico">{item.recoveryPercentage}%</span>
+                    <span className="font-mono text-[9px] text-concrete uppercase">
+                      {item.lastTrainedHoursAgo !== null ? `${item.lastTrainedHoursAgo}h atrás` : 'Sem dados'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* HORIZONTAL BARS FOR MUSCLES */}
           <div className="bg-noturno/90 border border-concrete/15 p-8 rounded-2xl shadow-xl flex flex-col gap-6">

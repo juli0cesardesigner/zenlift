@@ -1,4 +1,5 @@
-import { formatTime, formatRestTime, isValidVideoUrl, isValidUploadFile } from '../utils';
+import { describe, it, expect } from 'vitest';
+import { formatTime, formatRestTime, isValidVideoUrl, isValidUploadFile, calculateTotalVolume, detectPersonalRecords, generateWorkoutShareText } from '../utils';
 
 describe('utils formatting & security tests', () => {
   describe('formatTime', () => {
@@ -49,4 +50,82 @@ describe('utils formatting & security tests', () => {
       expect(isValidUploadFile(scriptFile, ['video/', 'image/'])).toBe(false);
     });
   });
+
+  describe('calculateTotalVolume', () => {
+    it('calculates total volume in kg for P1', () => {
+      const exercises = [
+        {
+          sets: [
+            { weight: '100', reps: '10', completed: true },
+            { weight: '100', reps: '8', completed: true },
+          ]
+        }
+      ];
+      expect(calculateTotalVolume(exercises)).toBe(1800);
+    });
+
+    it('calculates total volume for P2 in Dual Mode', () => {
+      const exercises = [
+        {
+          sets: [
+            { weight: '100', reps: '10', completed: true, weightP2: '80', repsP2: '10', completedP2: true },
+          ]
+        }
+      ];
+      expect(calculateTotalVolume(exercises, 'p2')).toBe(800);
+    });
+  });
+
+  describe('detectPersonalRecords', () => {
+    it('detects new PRs when weight exceeds previous max', () => {
+      const currentMaxes = { 'Supino Reto': 100 };
+      const newExercises = [
+        {
+          name: 'Supino Reto',
+          sets: [
+            { weight: '110', reps: '5', completed: true }
+          ]
+        }
+      ];
+      const result = detectPersonalRecords(currentMaxes, newExercises);
+      expect(result.prs).toContain('Supino Reto: 110kg');
+      expect(result.updatedMaxes['Supino Reto']).toBe(110);
+    });
+
+    it('does not flag PR if weight is less or equal', () => {
+      const currentMaxes = { 'Supino Reto': 100 };
+      const newExercises = [
+        {
+          name: 'Supino Reto',
+          sets: [
+            { weight: '90', reps: '10', completed: true }
+          ]
+        }
+      ];
+      const result = detectPersonalRecords(currentMaxes, newExercises);
+      expect(result.prs).toHaveLength(0);
+      expect(result.updatedMaxes['Supino Reto']).toBe(100);
+    });
+  });
+
+  describe('generateWorkoutShareText', () => {
+    it('generates aesthetic shareable text with metrics and PRs', () => {
+      const workout = {
+        name: 'Treino de Peito A',
+        durationMs: 3600000,
+        volumeKg: 4500,
+        prs: ['Supino Reto: 120kg'],
+        partner1Name: 'Elon',
+        partner2Name: 'Zuck'
+      };
+      const text = generateWorkoutShareText(workout);
+      expect(text).toContain('Treino de Peito A');
+      expect(text).toContain('60:00');
+      expect(text).toContain('4500 kg');
+      expect(text).toContain('Elon & Zuck');
+      expect(text).toContain('Supino Reto: 120kg');
+      expect(text).toContain('#Zenlift');
+    });
+  });
 });
+

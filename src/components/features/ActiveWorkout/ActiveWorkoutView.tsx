@@ -1,10 +1,9 @@
-// @ts-nocheck
 import React, { useRef, useState } from 'react';
-import { ChevronRight, ArrowLeft, Save, Plus, Edit3, Check, Trash2, Clock, Dumbbell, Play, X, Settings, Info, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckSquare, Square } from 'lucide-react';
-import { ExerciseDef } from '../../../types';
-import { isValidVideoUrl } from '../../../lib/utils';
+import { ChevronRight, ArrowLeft, Save, Plus, Edit3, Check, Trash2, Clock, Dumbbell, Play, X, Settings, Info, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckSquare, Square, Zap, Users } from 'lucide-react';
+import { ExerciseDef, ActiveWorkoutViewProps } from '../../../types';
+import { isValidVideoUrl, triggerHapticFeedback } from '../../../lib/utils';
 
-export function ActiveWorkoutView(props: any) {
+export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
   const blurMaskRef = useRef<HTMLDivElement>(null);
   const [maxDrag, setMaxDrag] = useState(0);
   const {
@@ -12,6 +11,8 @@ export function ActiveWorkoutView(props: any) {
     handleEndWorkout, handleAddExerciseToActiveWorkout, handleUpdateActiveSet,
     handleToggleActiveSet, exerciseMap, plans, isEditingDirectly, setIsEditingDirectly, activeInputModal, setActiveInputModal, modalTempValue, setModalTempValue, restTimer, setRestTimer, restRemainingMs, formatRestTime, handleAddRestTime, addingExerciseToActiveWorkout, setAddingExerciseToActiveWorkout, replacingActiveExerciseId, setReplacingActiveExerciseId, handleReplaceExerciseInActiveWorkout, exerciseSearchQuery, setExerciseSearchQuery, filteredExercises, filteredExercisesByMuscle, slideX, setSlideX, isSliding, setIsSliding, handleFinishWorkout, handleCancelWorkout, setActiveWorkout, resolvedActiveExerciseIndex, expandedCompletedExercises, setExpandedCompletedExercises, handleSkipExercise, globalActiveSetId, activeStopwatchSetId, activeStopwatchElapsedMs, setActiveStopwatchSetId, setActiveStopwatchStartTime, setActiveStopwatchElapsedMs, handleAddActiveSet, handleRemoveActiveSet, elapsedTime
   } = props;
+
+  const currentWorkoutType = activeWorkout?.workoutType || "rotina";
 
   return (
     <>
@@ -22,6 +23,42 @@ export function ActiveWorkoutView(props: any) {
           <div className="flex-none p-6 pb-4 border-b border-concrete/20 flex justify-between items-center bg-noturno z-10">
             <div>
               <h2 className="font-display text-2xl uppercase text-white leading-none">{activeWorkout.name}</h2>
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveWorkout((prev: any) => prev ? {
+                      ...prev,
+                      workoutType: (prev.workoutType || "rotina") === "rotina" ? "forca" : "rotina"
+                    } : null);
+                  }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider border transition-all ${
+                    currentWorkoutType === "forca"
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30"
+                      : "bg-concrete/10 text-concrete border-concrete/30 hover:border-concrete/50"
+                  }`}
+                  title="Clique para alternar entre Treino de Rotina e Treino de Força"
+                >
+                  {currentWorkoutType === "forca" ? (
+                    <>
+                      <Zap size={12} className="text-amber-400 fill-amber-400" />
+                      <span className="font-bold">Treino de Força</span>
+                    </>
+                  ) : (
+                    <>
+                      <Dumbbell size={12} className="text-concrete" />
+                      <span>Treino de Rotina</span>
+                    </>
+                  )}
+                </button>
+
+                {activeWorkout.sessionMode === "dual" && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">
+                    <Users size={12} className="text-cyan-400" />
+                    <span>DUAL: {activeWorkout.partner1Name || "P1"} & {activeWorkout.partner2Name || "P2"}</span>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-6">
               <button 
@@ -110,7 +147,7 @@ export function ActiveWorkoutView(props: any) {
                 </div>
               ) : (
                 activeWorkout.exercises.map((ae, aeIdx) => {
-                  const exDef = exerciseMap[ae.exerciseId];
+                  const exDef = exerciseMap ? (typeof (exerciseMap as any).get === 'function' ? (exerciseMap as any).get(ae.exerciseId) : exerciseMap[ae.exerciseId]) : undefined;
                   const activeEx = activeWorkout.exercises[resolvedActiveExerciseIndex];
                   const isInActiveSuperset = !!(activeEx && ae.supersetGroupId && ae.supersetGroupId === activeEx.supersetGroupId);
                   const distance = aeIdx - resolvedActiveExerciseIndex;
@@ -226,7 +263,7 @@ export function ActiveWorkoutView(props: any) {
                             {isValidVideoUrl(exDef?.videoUrl) && !isQueued && (
                               <div className="w-full mt-2 mb-2 rounded-lg overflow-hidden border border-concrete/20 bg-black">
                                 <video 
-                                  src={exDef.videoUrl} 
+                                  src={exDef?.videoUrl} 
                                   className="w-full h-auto max-h-[160px] object-cover mx-auto" 
                                   autoPlay 
                                   loop 
@@ -268,7 +305,7 @@ export function ActiveWorkoutView(props: any) {
                         {/* Visible Exercise Details */}
                         {exDef && exDef.visibleFields && exDef.visibleFields.length > 0 && !isQueued && (
                           <div className="flex flex-col gap-2 mt-3 mb-4 p-3 bg-concrete/5 border border-concrete/10 rounded-xl">
-                            {exDef.visibleFields.map(field => {
+                            {exDef.visibleFields.map((field: string) => {
                               const labelMap: Record<string, string> = {
                                 secondaryMuscles: "Músculos Secundários",
                                 mechanicType: "Mecânica",
@@ -300,19 +337,30 @@ export function ActiveWorkoutView(props: any) {
                         )}
 
                         {/* Sets Header */}
-                        <div className="grid grid-cols-12 font-mono text-[10px] text-concrete uppercase mb-2 text-center font-bold">
-                          <div className="col-span-2">Série</div>
-                          <div className="col-span-3">(Reps)</div>
-                          {exDef?.isRepsOnly ? (
-                            <div className="col-span-5">Reps</div>
-                          ) : (
-                            <>
-                              <div className="col-span-3">Carga (kg)</div>
-                              <div className="col-span-2">Reps</div>
-                            </>
-                          )}
-                          <div className="col-span-2">Feito</div>
-                        </div>
+                        {activeWorkout.sessionMode === "dual" ? (
+                          <div className="grid grid-cols-12 font-mono text-[10px] text-cyan-400 uppercase mb-2 text-center font-bold">
+                            <div className="col-span-2">Série</div>
+                            <div className="col-span-2">Alvo</div>
+                            <div className="col-span-8 flex justify-around">
+                              <span className="text-vulcanico">{activeWorkout.partner1Name || "P1"}</span>
+                              <span className="text-cyan-400">{activeWorkout.partner2Name || "P2"}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-12 font-mono text-[10px] text-concrete uppercase mb-2 text-center font-bold">
+                            <div className="col-span-2">Série</div>
+                            <div className="col-span-3">(Reps)</div>
+                            {exDef?.isRepsOnly ? (
+                              <div className="col-span-5">Reps</div>
+                            ) : (
+                              <>
+                                <div className="col-span-3">Carga (kg)</div>
+                                <div className="col-span-2">Reps</div>
+                              </>
+                            )}
+                            <div className="col-span-2">Feito</div>
+                          </div>
+                        )}
 
                         {/* Sets Rows */}
                         <div className="flex flex-col gap-2">
@@ -323,12 +371,13 @@ export function ActiveWorkoutView(props: any) {
                               : "Livre";
 
                             const isActiveSet = set.id === globalActiveSetId;
+                            const isFullyCompleted = activeWorkout.sessionMode === "dual" ? (set.completed && set.completedP2) : set.completed;
 
                             return (
                               <div 
                                 key={set.id} 
                                 className={`grid grid-cols-12 items-center text-center py-2 transition-all rounded-xl ${
-                                  set.completed ? "bg-vulcanico/10 opacity-70" : "bg-concrete/5"
+                                  isFullyCompleted ? "bg-vulcanico/10 opacity-70" : "bg-concrete/5"
                                 } ${isActiveSet ? "ring-2 ring-vulcanico shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse" : ""}`}
                               >
                                 <div className="col-span-2 font-mono text-xs flex flex-col items-center justify-center">
@@ -360,130 +409,262 @@ export function ActiveWorkoutView(props: any) {
                                   </div>
                                 </div>
 
-                                <div className="col-span-3 font-mono text-[11px] text-concrete">
+                                <div className={`${activeWorkout.sessionMode === "dual" ? "col-span-2" : "col-span-3"} font-mono text-[11px] text-concrete`}>
                                   <div>{targetText}</div>
                                 </div>
 
-                                {exDef?.isTimeBased ? (
-                                  <div className="col-span-5 px-1">
-                                    <button
-                                      onClick={() => {
-                                        if (set.completed) {
-                                          handleUpdateActiveSet(ae.id, set.id, "completed", false);
-                                          return;
-                                        }
-                                        if (activeStopwatchSetId === set.id) {
-                                          // PAUSE/STOP
-                                          const finalTime = formatTime(activeStopwatchElapsedMs);
-                                          setActiveStopwatchSetId(null);
-                                          setActiveStopwatchStartTime(null);
-                                          handleUpdateActiveSet(ae.id, set.id, "reps", finalTime);
-                                        } else {
-                                          // PLAY
-                                          setActiveStopwatchSetId(set.id);
-                                          setActiveStopwatchStartTime(Date.now());
-                                          setActiveStopwatchElapsedMs(0);
-                                        }
-                                      }}
-                                      className={`w-full bg-vulcanico/10 border ${activeStopwatchSetId === set.id ? 'border-vulcanico/80 bg-vulcanico/20' : 'border-vulcanico/30'} rounded-lg flex items-center justify-center gap-2 py-1.5 font-mono focus:outline-none transition-colors ${set.completed ? 'opacity-50 line-through text-concrete' : 'text-vulcanico'}`}
-                                    >
-                                      {activeStopwatchSetId === set.id ? (
-                                        <>
-                                          <div className="w-2 h-2 rounded-full bg-vulcanico animate-pulse"></div>
-                                          <span className="text-sm font-bold">{formatTime(activeStopwatchElapsedMs)}</span>
-                                        </>
-                                      ) : set.completed && set.reps ? (
-                                        <span className="text-sm">{set.reps}</span>
-                                      ) : (
-                                        <>
-                                          <Play size={12} className="fill-vulcanico" />
-                                          <span className="text-[10px] uppercase tracking-widest font-bold">Iniciar</span>
-                                        </>
-                                      )}
-                                    </button>
-                                  </div>
-                                ) : exDef?.isRepsOnly ? (
-                                  <div className="col-span-5 px-1">
-                                    <button 
-                                      onClick={() => {
-                                        if (!set.completed) {
-                                          setActiveInputModal({
-                                            exerciseId: ae.id,
-                                            setId: set.id,
-                                            field: "reps",
-                                            initialValue: set.reps,
-                                            suggestedValue: set.suggestedReps || ""
-                                          });
-                                          setModalTempValue(set.reps || set.suggestedReps || "0");
-                                        }
-                                      }}
-                                      className={`w-full bg-transparent border-b border-concrete/30 text-center font-mono text-lg focus:outline-none py-0.5 min-h-[32px] ${!set.reps && set.suggestedReps ? 'text-concrete/70' : 'text-white'}`}
-                                      disabled={set.completed}
-                                    >
-                                      {set.reps || set.suggestedReps || "0"}
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <div className="col-span-3 px-1">
-                                      <button 
-                                        onClick={() => {
-                                          if (!set.completed) {
-                                            setActiveInputModal({
-                                              exerciseId: ae.id,
-                                              setId: set.id,
-                                              field: "weight",
-                                              initialValue: set.weight,
-                                              suggestedValue: set.suggestedWeight || ""
-                                            });
-                                            setModalTempValue(set.weight || set.suggestedWeight || "0");
-                                          }
-                                        }}
-                                        className={`w-full bg-transparent border-b border-concrete/30 text-center font-mono text-lg focus:outline-none py-0.5 min-h-[32px] ${!set.weight && set.suggestedWeight ? 'text-concrete/70' : 'text-white'}`}
-                                        disabled={set.completed}
+                                {activeWorkout.sessionMode === "dual" ? (
+                                  <div className="col-span-8 grid grid-cols-2 gap-2 px-1">
+                                    {/* P1 Box */}
+                                    <div className={`p-2 rounded-lg border flex items-center justify-between gap-1 transition-all ${
+                                      set.completed ? "bg-vulcanico/20 border-vulcanico/50" : "bg-black/30 border-white/10"
+                                    }`}>
+                                      <span className="font-mono text-[9px] text-vulcanico font-bold truncate max-w-[55px]">
+                                        {activeWorkout.partner1Name || "P1"}
+                                      </span>
+                                      <div className="flex items-center gap-1 font-mono text-xs">
+                                        <button
+                                          onClick={() => {
+                                            if (!set.completed) {
+                                              setActiveInputModal({
+                                                exerciseId: ae.id,
+                                                setId: set.id,
+                                                field: "weight",
+                                                partner: "p1",
+                                                initialValue: set.weight,
+                                                suggestedValue: set.suggestedWeight || ""
+                                              });
+                                              setModalTempValue(set.weight || set.suggestedWeight || "0");
+                                            }
+                                          }}
+                                          disabled={set.completed}
+                                          className={`px-1.5 py-0.5 rounded border border-concrete/20 ${!set.weight && set.suggestedWeight ? 'text-concrete' : 'text-white'}`}
+                                        >
+                                          {set.weight || set.suggestedWeight || "0"}<span className="text-[9px] text-concrete">kg</span>
+                                        </button>
+                                        <span className="text-concrete text-[10px]">×</span>
+                                        <button
+                                          onClick={() => {
+                                            if (!set.completed) {
+                                              setActiveInputModal({
+                                                exerciseId: ae.id,
+                                                setId: set.id,
+                                                field: "reps",
+                                                partner: "p1",
+                                                initialValue: set.reps,
+                                                suggestedValue: set.suggestedReps || ""
+                                              });
+                                              setModalTempValue(set.reps || set.suggestedReps || "0");
+                                            }
+                                          }}
+                                          disabled={set.completed}
+                                          className={`px-1.5 py-0.5 rounded border border-concrete/20 ${!set.reps && set.suggestedReps ? 'text-concrete' : 'text-white'}`}
+                                        >
+                                          {set.reps || set.suggestedReps || "0"}
+                                        </button>
+                                      </div>
+                                      <button
+                                         onClick={() => {
+                                           triggerHapticFeedback('medium');
+                                           handleUpdateActiveSet(ae.id, set.id, "completed", !set.completed, "p1");
+                                         }}
+                                        className={`w-6 h-6 rounded flex items-center justify-center transition-colors shrink-0 ${
+                                          set.completed ? "bg-vulcanico text-noturno" : "bg-concrete/20 text-concrete hover:text-white"
+                                        }`}
+                                        title={`Marcar concluído para ${activeWorkout.partner1Name || "P1"}`}
                                       >
-                                        {set.weight || set.suggestedWeight || "0"}
+                                        {set.completed ? <Check size={14} strokeWidth={3} /> : <Square size={14} />}
                                       </button>
                                     </div>
 
-                                    <div className="col-span-2 px-1">
-                                      <button 
-                                        onClick={() => {
-                                          if (!set.completed) {
-                                            setActiveInputModal({
-                                              exerciseId: ae.id,
-                                              setId: set.id,
-                                              field: "reps",
-                                              initialValue: set.reps,
-                                              suggestedValue: set.suggestedReps || ""
-                                            });
-                                            setModalTempValue(set.reps || set.suggestedReps || "0");
-                                          }
-                                        }}
-                                        className={`w-full bg-transparent border-b border-concrete/30 text-center font-mono text-lg focus:outline-none py-0.5 min-h-[32px] ${!set.reps && set.suggestedReps ? 'text-concrete/70' : 'text-white'}`}
-                                        disabled={set.completed}
+                                    {/* P2 Box */}
+                                    <div className={`p-2 rounded-lg border flex items-center justify-between gap-1 transition-all ${
+                                      set.completedP2 ? "bg-cyan-950/40 border-cyan-500/50" : "bg-black/30 border-white/10"
+                                    }`}>
+                                      <span className="font-mono text-[9px] text-cyan-400 font-bold truncate max-w-[55px]">
+                                        {activeWorkout.partner2Name || "P2"}
+                                      </span>
+                                      <div className="flex items-center gap-1 font-mono text-xs">
+                                        <button
+                                          onClick={() => {
+                                            if (!set.completedP2) {
+                                              setActiveInputModal({
+                                                exerciseId: ae.id,
+                                                setId: set.id,
+                                                field: "weight",
+                                                partner: "p2",
+                                                initialValue: set.weightP2 || "",
+                                                suggestedValue: set.suggestedWeightP2 || ""
+                                              });
+                                              setModalTempValue(set.weightP2 || set.suggestedWeightP2 || "0");
+                                            }
+                                          }}
+                                          disabled={set.completedP2}
+                                          className={`px-1.5 py-0.5 rounded border border-concrete/20 ${!set.weightP2 && set.suggestedWeightP2 ? 'text-concrete' : 'text-white'}`}
+                                        >
+                                          {set.weightP2 || set.suggestedWeightP2 || "0"}<span className="text-[9px] text-concrete">kg</span>
+                                        </button>
+                                        <span className="text-concrete text-[10px]">×</span>
+                                        <button
+                                          onClick={() => {
+                                            if (!set.completedP2) {
+                                              setActiveInputModal({
+                                                exerciseId: ae.id,
+                                                setId: set.id,
+                                                field: "reps",
+                                                partner: "p2",
+                                                initialValue: set.repsP2 || "",
+                                                suggestedValue: set.suggestedRepsP2 || ""
+                                              });
+                                              setModalTempValue(set.repsP2 || set.suggestedRepsP2 || "0");
+                                            }
+                                          }}
+                                          disabled={set.completedP2}
+                                          className={`px-1.5 py-0.5 rounded border border-concrete/20 ${!set.repsP2 && set.suggestedRepsP2 ? 'text-concrete' : 'text-white'}`}
+                                        >
+                                          {set.repsP2 || set.suggestedRepsP2 || "0"}
+                                        </button>
+                                      </div>
+                                      <button
+                                         onClick={() => {
+                                           triggerHapticFeedback('medium');
+                                           handleUpdateActiveSet(ae.id, set.id, "completed", !set.completedP2, "p2");
+                                         }}
+                                        className={`w-6 h-6 rounded flex items-center justify-center transition-colors shrink-0 ${
+                                          set.completedP2 ? "bg-cyan-500 text-noturno" : "bg-concrete/20 text-concrete hover:text-white"
+                                        }`}
+                                        title={`Marcar concluído para ${activeWorkout.partner2Name || "P2"}`}
                                       >
-                                        {set.reps || set.suggestedReps || "0"}
+                                        {set.completedP2 ? <Check size={14} strokeWidth={3} /> : <Square size={14} />}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    {exDef?.isTimeBased ? (
+                                      <div className="col-span-5 px-1">
+                                        <button
+                                          onClick={() => {
+                                            if (set.completed) {
+                                              handleUpdateActiveSet(ae.id, set.id, "completed", false);
+                                              return;
+                                            }
+                                            if (activeStopwatchSetId === set.id) {
+                                              // PAUSE/STOP
+                                              const finalTime = formatTime(activeStopwatchElapsedMs);
+                                              setActiveStopwatchSetId(null);
+                                              setActiveStopwatchStartTime(null);
+                                              handleUpdateActiveSet(ae.id, set.id, "reps", finalTime);
+                                            } else {
+                                              // PLAY
+                                              setActiveStopwatchSetId(set.id);
+                                              setActiveStopwatchStartTime(Date.now());
+                                              setActiveStopwatchElapsedMs(0);
+                                            }
+                                          }}
+                                          className={`w-full bg-vulcanico/10 border ${activeStopwatchSetId === set.id ? 'border-vulcanico/80 bg-vulcanico/20' : 'border-vulcanico/30'} rounded-lg flex items-center justify-center gap-2 py-1.5 font-mono focus:outline-none transition-colors ${set.completed ? 'opacity-50 line-through text-concrete' : 'text-vulcanico'}`}
+                                        >
+                                          {activeStopwatchSetId === set.id ? (
+                                            <>
+                                              <div className="w-2 h-2 rounded-full bg-vulcanico animate-pulse"></div>
+                                              <span className="text-sm font-bold">{formatTime(activeStopwatchElapsedMs)}</span>
+                                            </>
+                                          ) : set.completed && set.reps ? (
+                                            <span className="text-sm">{set.reps}</span>
+                                          ) : (
+                                            <>
+                                              <Play size={12} className="fill-vulcanico" />
+                                              <span className="text-[10px] uppercase tracking-widest font-bold">Iniciar</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      </div>
+                                    ) : exDef?.isRepsOnly ? (
+                                      <div className="col-span-5 px-1">
+                                        <button 
+                                          onClick={() => {
+                                            if (!set.completed) {
+                                              setActiveInputModal({
+                                                exerciseId: ae.id,
+                                                setId: set.id,
+                                                field: "reps",
+                                                initialValue: set.reps,
+                                                suggestedValue: set.suggestedReps || ""
+                                              });
+                                              setModalTempValue(set.reps || set.suggestedReps || "0");
+                                            }
+                                          }}
+                                          className={`w-full bg-transparent border-b border-concrete/30 text-center font-mono text-lg focus:outline-none py-0.5 min-h-[32px] ${!set.reps && set.suggestedReps ? 'text-concrete/70' : 'text-white'}`}
+                                          disabled={set.completed}
+                                        >
+                                          {set.reps || set.suggestedReps || "0"}
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div className="col-span-3 px-1">
+                                          <button 
+                                            onClick={() => {
+                                              if (!set.completed) {
+                                                setActiveInputModal({
+                                                  exerciseId: ae.id,
+                                                  setId: set.id,
+                                                  field: "weight",
+                                                  initialValue: set.weight,
+                                                  suggestedValue: set.suggestedWeight || ""
+                                                });
+                                                setModalTempValue(set.weight || set.suggestedWeight || "0");
+                                              }
+                                            }}
+                                            className={`w-full bg-transparent border-b border-concrete/30 text-center font-mono text-lg focus:outline-none py-0.5 min-h-[32px] ${!set.weight && set.suggestedWeight ? 'text-concrete/70' : 'text-white'}`}
+                                            disabled={set.completed}
+                                          >
+                                            {set.weight || set.suggestedWeight || "0"}
+                                          </button>
+                                        </div>
+
+                                        <div className="col-span-2 px-1">
+                                          <button 
+                                            onClick={() => {
+                                              if (!set.completed) {
+                                                setActiveInputModal({
+                                                  exerciseId: ae.id,
+                                                  setId: set.id,
+                                                  field: "reps",
+                                                  initialValue: set.reps,
+                                                  suggestedValue: set.suggestedReps || ""
+                                                });
+                                                setModalTempValue(set.reps || set.suggestedReps || "0");
+                                              }
+                                            }}
+                                            className={`w-full bg-transparent border-b border-concrete/30 text-center font-mono text-lg focus:outline-none py-0.5 min-h-[32px] ${!set.reps && set.suggestedReps ? 'text-concrete/70' : 'text-white'}`}
+                                            disabled={set.completed}
+                                          >
+                                            {set.reps || set.suggestedReps || "0"}
+                                          </button>
+                                        </div>
+                                      </>
+                                    )}
+
+                                    <div className="col-span-2 flex justify-center">
+                                      <button
+                                        onClick={() => {
+                                          triggerHapticFeedback('medium');
+                                          if (handleToggleActiveSet) handleToggleActiveSet(ae.id, set.id);
+                                          else handleUpdateActiveSet(ae.id, set.id, "completed", !set.completed);
+                                        }}
+                                        className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                                          set.completed ? "bg-vulcanico text-noturno" : "bg-concrete/10 text-concrete hover:text-white"
+                                        }`}
+                                      >
+                                        {set.completed ? <Check size={18} strokeWidth={3} /> : <Square size={18} />}
                                       </button>
                                     </div>
                                   </>
                                 )}
-
-                                <div className="col-span-2 flex justify-center">
-                                  <button 
-                                    onClick={() => handleUpdateActiveSet(ae.id, set.id, "completed", !set.completed)}
-                                    className="text-vulcanico hover:scale-105 transition-transform"
-                                  >
-                                    {set.completed ? (
-                                      <CheckSquare size={24} />
-                                    ) : (
-                                      <Square size={24} className="text-concrete" />
-                                    )}
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
+                            </div>
+                          );
+                        })}
                         </div>
 
                         {/* Set actions */}
@@ -553,6 +734,7 @@ export function ActiveWorkoutView(props: any) {
                 setIsSliding(false);
                 e.currentTarget.releasePointerCapture(e.pointerId);
                 if (slideX >= maxDrag * 0.85) {
+                  triggerHapticFeedback('success');
                   handleFinishWorkout();
                 }
                 setSlideX(0);
@@ -612,7 +794,7 @@ export function ActiveWorkoutView(props: any) {
             };
 
             const handleKeypadPress = (key: string) => {
-              setModalTempValue(prev => {
+              setModalTempValue((prev: string) => {
                 if (key === "backspace") {
                   if (prev.length <= 1) return "0";
                   return prev.slice(0, -1);
@@ -637,7 +819,8 @@ export function ActiveWorkoutView(props: any) {
                 activeInputModal.exerciseId,
                 activeInputModal.setId,
                 activeInputModal.field,
-                modalTempValue
+                modalTempValue,
+                activeInputModal.partner || "p1"
               );
               setActiveInputModal(null);
             };
@@ -650,6 +833,11 @@ export function ActiveWorkoutView(props: any) {
                   <div className="flex justify-between items-center">
                     <h3 className="font-display text-xl text-concrete uppercase tracking-widest">
                       {isWeight ? "Ajustar Carga" : "Ajustar Repetições"}
+                      {activeWorkout?.sessionMode === "dual" && (
+                        <span className="text-cyan-400 font-bold ml-2 text-sm">
+                          ({activeInputModal.partner === "p2" ? (activeWorkout.partner2Name || "P2") : (activeWorkout.partner1Name || "P1")})
+                        </span>
+                      )}
                     </h3>
                     <button onClick={() => setActiveInputModal(null)} className="text-concrete hover:text-white p-2">
                       <X size={24} />
@@ -806,7 +994,7 @@ export function ActiveWorkoutView(props: any) {
                 <div className="w-48 bg-concrete/20 h-1.5 rounded-full overflow-hidden mt-6 mb-8">
                   <div 
                     className="bg-vulcanico h-full transition-all duration-100 ease-out"
-                    style={{ width: `${Math.min(100, (restRemainingMs / (restTimer.duration * 1000)) * 100)}%` }}
+                    style={{ width: `${Math.min(100, (restRemainingMs / ((restTimer.duration || 1) * 1000)) * 100)}%` }}
                   />
                 </div>
 
@@ -902,9 +1090,9 @@ export function ActiveWorkoutView(props: any) {
                             key={ex.id}
                             onClick={() => {
                               if (replacingActiveExerciseId) {
-                                handleReplaceExerciseInActiveWorkout(ex);
+                                handleReplaceExerciseInActiveWorkout(replacingActiveExerciseId, ex.id);
                               } else {
-                                handleAddExerciseToActiveWorkout(ex);
+                                handleAddExerciseToActiveWorkout(ex.id);
                               }
                             }}
                             className="text-left py-3 border-b border-concrete/10 hover:text-vulcanico transition-colors"

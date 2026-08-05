@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React from 'react';
-import { Clock, Trash2, X, ChevronRight, FileText } from 'lucide-react';
+import { Clock, Trash2, X, ChevronRight, FileText, Zap, Dumbbell, Users } from 'lucide-react';
 import { HistoryLog } from '../../../types';
 import { STATS_PERIOD_LABEL_MAP, muscleColors } from '../../../lib/constants';
 import { isValidVideoUrl } from '../../../lib/utils';
@@ -507,7 +507,23 @@ export function HistoryView(props: any) {
                       <div key={log.id} className="flex flex-col animate-fade-in">
                         <div className="flex justify-between items-end mb-4 border-b border-concrete/15 pb-2">
                           <div>
-                            <p className="font-mono text-vulcanico text-[10px] uppercase mb-1">{dateStr}</p>
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <p className="font-mono text-vulcanico text-[10px] uppercase">{dateStr}</p>
+                              {log.workoutType === "forca" ? (
+                                <span className="font-mono text-[9px] uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold flex items-center gap-1">
+                                  <Zap size={10} className="fill-amber-400" /> FORÇA
+                                </span>
+                              ) : (
+                                <span className="font-mono text-[9px] uppercase bg-concrete/10 text-concrete border border-concrete/20 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                  <Dumbbell size={10} /> ROTINA
+                                </span>
+                              )}
+                              {log.sessionMode === "dual" && (
+                                <span className="font-mono text-[9px] uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded font-bold flex items-center gap-1">
+                                  <Users size={10} className="text-cyan-400" /> DUAL ({log.partner1Name || "P1"} & {log.partner2Name || "P2"})
+                                </span>
+                              )}
+                            </div>
                             <h2 className="font-display text-2xl uppercase text-white leading-none">{log.name}</h2>
                           </div>
                           <div className="flex flex-col items-end gap-2 shrink-0">
