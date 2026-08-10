@@ -1846,7 +1846,7 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
     if (addingExerciseToWorkoutId) {
       setAddingExerciseToWorkoutId(null);
       setConfiguringExercise({
-        workoutId: targetWorkoutId,
+        workoutId: targetWorkoutId!,
         exercise: plannedEx
       });
     }
