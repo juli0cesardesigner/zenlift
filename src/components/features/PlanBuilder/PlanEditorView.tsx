@@ -1,11 +1,15 @@
 // @ts-nocheck
-import React from 'react';
+import React, { useState } from 'react';
 import { ChevronRight, ArrowLeft, Save, Plus, Edit3, Check, Trash2, Clock, Dumbbell, Link, X, ChevronDown, ChevronUp, Copy } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 export function PlanEditorView(props: any) {
+  const [showQuickCreate, setShowQuickCreate] = useState(false);
+  const [quickName, setQuickName] = useState("");
+  const [quickMuscle, setQuickMuscle] = useState("Peito");
+
   const {
-    editingPlan, editingWorkoutId, setEditingWorkoutId, handleMoveWorkout, handleRemoveExerciseFromWorkout, handleOpenAddExerciseToWorkout, handleAddWorkoutToBuilder, addingExerciseToWorkoutId, setAddingExerciseToWorkoutId, exerciseSearchQuery, setExerciseSearchQuery, filteredExercises, filteredExercisesByMuscle, handleAddExerciseToWorkout, configuringExercise, setConfiguringExercise, exerciseMap, handleSaveExerciseConfig, handleApplySetConfigToAll, handleRemoveSetFromConfig, handleUpdateSetConfig, handleAddSetToConfig, handleToggleConjugate, handleSavePlan, setEditingPlan, plans, peIdx, exerciseMapByName, handleUpdateWorkoutNameInBuilder, setConfirmConfig, handleRemoveWorkoutFromBuilder
+    editingPlan, editingWorkoutId, setEditingWorkoutId, handleMoveWorkout, handleRemoveExerciseFromWorkout, handleOpenAddExerciseToWorkout, handleAddWorkoutToBuilder, addingExerciseToWorkoutId, setAddingExerciseToWorkoutId, exerciseSearchQuery, setExerciseSearchQuery, filteredExercises, filteredExercisesByMuscle, handleAddExerciseToWorkout, handleCreateAndAddExerciseInline, configuringExercise, setConfiguringExercise, exerciseMap, handleSaveExerciseConfig, handleApplySetConfigToAll, handleRemoveSetFromConfig, handleUpdateSetConfig, handleAddSetToConfig, handleToggleConjugate, handleSavePlan, setEditingPlan, plans, peIdx, exerciseMapByName, handleUpdateWorkoutNameInBuilder, setConfirmConfig, handleRemoveWorkoutFromBuilder
   } = props;
 
   return (
@@ -322,6 +326,60 @@ export function PlanEditorView(props: any) {
               placeholder="Pesquisar exercício ou grupo muscular..."
               className="w-full bg-transparent border-b border-concrete/30 py-2 font-sans text-sm text-white focus:outline-none focus:border-vulcanico"
             />
+          </div>
+
+          {/* Quick Create Custom Exercise Inline */}
+          <div className="mb-4 bg-white/5 border border-concrete/20 rounded-xl p-3">
+            {!showQuickCreate ? (
+              <button 
+                type="button"
+                onClick={() => setShowQuickCreate(true)}
+                className="w-full flex items-center justify-between font-mono text-xs text-vulcanico uppercase font-bold tracking-wider hover:text-white transition-colors"
+              >
+                <span>+ Criar Exercício Personalizado</span>
+                <Plus size={16} />
+              </button>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center border-b border-concrete/10 pb-1">
+                  <span className="font-mono text-[10px] text-vulcanico uppercase font-bold">Novo Exercício</span>
+                  <button type="button" onClick={() => setShowQuickCreate(false)} className="text-concrete hover:text-white text-xs">
+                    Cancelar
+                  </button>
+                </div>
+                <input 
+                  type="text" 
+                  value={quickName}
+                  onChange={(e) => setQuickName(e.target.value)}
+                  placeholder="Nome (ex: Remada Articulada)"
+                  className="w-full bg-noturno border border-concrete/20 rounded-lg px-3 py-1.5 font-sans text-xs text-white outline-none focus:border-vulcanico"
+                />
+                <div className="flex items-center gap-2">
+                  <select 
+                    value={quickMuscle}
+                    onChange={(e) => setQuickMuscle(e.target.value)}
+                    className="flex-1 bg-noturno border border-concrete/20 rounded-lg px-2 py-1.5 font-mono text-xs text-white outline-none"
+                  >
+                    {["Peito", "Costas", "Pernas", "Ombros", "Braços", "Core", "Cardio", "Outros"].map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      if (!quickName.trim() || !handleCreateAndAddExerciseInline) return;
+                      handleCreateAndAddExerciseInline(quickName, quickMuscle, addingExerciseToWorkoutId);
+                      setQuickName("");
+                      setShowQuickCreate(false);
+                    }}
+                    disabled={!quickName.trim()}
+                    className="bg-vulcanico hover:bg-white text-noturno font-mono text-xs uppercase px-3 py-1.5 rounded-lg font-bold disabled:opacity-30 transition-colors"
+                  >
+                    Criar & Adicionar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto flex flex-col gap-6 pr-1">

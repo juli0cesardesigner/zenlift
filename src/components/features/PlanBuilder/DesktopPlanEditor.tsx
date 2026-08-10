@@ -6,6 +6,10 @@ import { ExerciseDef, PlannedSet } from '../../../types';
 import { muscleColors } from '../../../lib/constants';
 
 export function DesktopPlanEditor(props: any) {
+  const [showQuickCreate, setShowQuickCreate] = useState(false);
+  const [quickName, setQuickName] = useState("");
+  const [quickMuscle, setQuickMuscle] = useState("Peito");
+
   const {
     editingPlan,
     editingWorkoutId,
@@ -17,6 +21,7 @@ export function DesktopPlanEditor(props: any) {
     setExerciseSearchQuery,
     filteredExercises,
     handleAddExerciseToWorkout,
+    handleCreateAndAddExerciseInline,
     handleSavePlan,
     setEditingPlan,
     exerciseMap,
@@ -451,10 +456,12 @@ export function DesktopPlanEditor(props: any) {
         {/* COLUMN 3: EXERCISE LIBRARY (RIGHT) */}
         <div className="w-96 border-l border-concrete/20 bg-noturno flex flex-col shadow-[-10px_0_20px_rgba(0,0,0,0.5)] z-20">
           <div className="p-6 border-b border-concrete/20 flex flex-col gap-4">
-            <h3 className="font-display text-lg text-white uppercase tracking-widest flex items-center gap-2">
-              <Search className="text-vulcanico" size={20} />
-              Biblioteca
-            </h3>
+            <div className="flex justify-between items-center">
+              <h3 className="font-display text-lg text-white uppercase tracking-widest flex items-center gap-2">
+                <Search className="text-vulcanico" size={20} />
+                Biblioteca
+              </h3>
+            </div>
             
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-concrete" size={18} />
@@ -465,6 +472,60 @@ export function DesktopPlanEditor(props: any) {
                 onChange={(e) => setExerciseSearchQuery(e.target.value)}
                 className="w-full bg-black border border-concrete/30 focus:border-vulcanico rounded-xl pl-10 pr-4 py-3 font-mono text-xs text-white placeholder-concrete/50 outline-none transition-colors"
               />
+            </div>
+
+            {/* Quick Create Custom Exercise Inline */}
+            <div className="bg-white/5 border border-concrete/20 rounded-xl p-3">
+              {!showQuickCreate ? (
+                <button 
+                  type="button"
+                  onClick={() => setShowQuickCreate(true)}
+                  className="w-full flex items-center justify-between font-mono text-xs text-vulcanico uppercase font-bold tracking-wider hover:text-white transition-colors"
+                >
+                  <span>+ Criar Exercício Personalizado</span>
+                  <Plus size={16} />
+                </button>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="flex justify-between items-center border-b border-concrete/10 pb-1">
+                    <span className="font-mono text-[10px] text-vulcanico uppercase font-bold">Novo Exercício</span>
+                    <button type="button" onClick={() => setShowQuickCreate(false)} className="text-concrete hover:text-white text-xs">
+                      Cancelar
+                    </button>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={quickName}
+                    onChange={(e) => setQuickName(e.target.value)}
+                    placeholder="Nome (ex: Rosca Martelo)"
+                    className="w-full bg-black border border-concrete/30 rounded-lg px-3 py-1.5 font-sans text-xs text-white outline-none focus:border-vulcanico"
+                  />
+                  <div className="flex items-center gap-2">
+                    <select 
+                      value={quickMuscle}
+                      onChange={(e) => setQuickMuscle(e.target.value)}
+                      className="flex-1 bg-black border border-concrete/30 rounded-lg px-2 py-1.5 font-mono text-xs text-white outline-none"
+                    >
+                      {["Peito", "Costas", "Pernas", "Ombros", "Braços", "Core", "Cardio", "Outros"].map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        if (!quickName.trim() || !handleCreateAndAddExerciseInline) return;
+                        handleCreateAndAddExerciseInline(quickName, quickMuscle, activeWorkout?.id);
+                        setQuickName("");
+                        setShowQuickCreate(false);
+                      }}
+                      disabled={!quickName.trim()}
+                      className="bg-vulcanico hover:bg-white text-noturno font-mono text-xs uppercase px-3 py-1.5 rounded-lg font-bold disabled:opacity-30 transition-colors"
+                    >
+                      Criar & Adicionar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
