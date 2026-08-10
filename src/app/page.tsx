@@ -47,7 +47,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import { Tab, ExerciseDef, PlannedSet, PlannedExercise, WorkoutTemplate, Plan, ActiveSet, ActiveExercise, ActiveWorkoutSession, HistoryLog } from '../types';
 import { EXERCISE_FIELDS_LABEL_MAP, EXERCISE_VIEW_MODE_LABEL_MAP, STATS_PERIOD_LABEL_MAP, defaultExercises, muscleColors, nodePositions } from '../lib/constants';
-import { isValidVideoUrl, formatTime, formatRestTime } from '../lib/utils';
+import { isValidVideoUrl, formatTime, formatRestTime, generateId } from '../lib/utils';
 import { ToggleSwitch } from '../components/ui/ToggleSwitch';
 import { CustomSelect } from '../components/ui/CustomSelect';
 export default function AppContainer() {
@@ -282,6 +282,15 @@ export default function AppContainer() {
 
     if (storedHistory) setHistory(JSON.parse(storedHistory));
     if (storedActiveWorkout) setActiveWorkout(JSON.parse(storedActiveWorkout));
+
+    const storedEditingPlan = localStorage.getItem("is_editing_plan_v3");
+    if (storedEditingPlan) {
+      try {
+        setEditingPlan(JSON.parse(storedEditingPlan));
+      } catch (e) {
+        // ignore
+      }
+    }
 
     const storedFocused = localStorage.getItem("is_focused_exercises_v1");
     if (storedFocused) setFocusedExercises(JSON.parse(storedFocused));
@@ -1184,6 +1193,15 @@ export default function AppContainer() {
 
   useEffect(() => {
     if (!isLoaded) return;
+    if (editingPlan) {
+      localStorage.setItem("is_editing_plan_v3", JSON.stringify(editingPlan));
+    } else {
+      localStorage.removeItem("is_editing_plan_v3");
+    }
+  }, [editingPlan, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
     localStorage.setItem("is_history_v4", JSON.stringify(history));
     if (user && !isSyncingFromRemoteRef.current) {
       pushHistoryToSupabase(user.id, history).then(() => {
@@ -1435,7 +1453,7 @@ export default function AppContainer() {
     if (!newExerciseName.trim()) return;
 
     const newEx: ExerciseDef = {
-      id: `ex_${crypto.randomUUID()}`,
+      id: `ex_${generateId()}`,
       name: newExerciseName.trim(),
       muscle: newExerciseMuscle
     };
@@ -1469,7 +1487,7 @@ export default function AppContainer() {
         const muscle = cols[1]?.trim() || "Geral";
         if (name) {
           const newEx: ExerciseDef = {
-            id: `ex_${crypto.randomUUID()}`,
+            id: `ex_${generateId()}`,
             name: name,
             muscle: muscle,
             equipment: cols[2]?.trim() || undefined,
@@ -1512,7 +1530,7 @@ export default function AppContainer() {
     try {
       if (editingExerciseVideoFile) {
         const ext = editingExerciseVideoFile.name.split('.').pop();
-        const filePath = `videos/${crypto.randomUUID()}.${ext}`;
+        const filePath = `videos/${generateId()}.${ext}`;
         const { error: uploadErr } = await supabase.storage.from("exercise_media").upload(filePath, editingExerciseVideoFile);
         if (!uploadErr) {
           const { data } = supabase.storage.from("exercise_media").getPublicUrl(filePath);
@@ -1522,7 +1540,7 @@ export default function AppContainer() {
 
       if (editingExerciseThumbnailFile) {
         const ext = editingExerciseThumbnailFile.name.split('.').pop();
-        const filePath = `thumbnails/${crypto.randomUUID()}.${ext}`;
+        const filePath = `thumbnails/${generateId()}.${ext}`;
         const { error: uploadErr } = await supabase.storage.from("exercise_media").upload(filePath, editingExerciseThumbnailFile);
         if (!uploadErr) {
           const { data } = supabase.storage.from("exercise_media").getPublicUrl(filePath);
@@ -1560,7 +1578,7 @@ export default function AppContainer() {
   // --- ACTIONS: PLAN BUILDER ---
   const handleStartCreatePlan = () => {
     setEditingPlan({
-      id: `plan_${crypto.randomUUID()}`,
+      id: `plan_${generateId()}`,
       name: "",
       workouts: []
     });
@@ -1699,7 +1717,7 @@ export default function AppContainer() {
   const handleAddWorkoutToBuilder = () => {
     if (!editingPlan) return;
     const newWorkout: WorkoutTemplate = {
-      id: `wk_${crypto.randomUUID()}`,
+      id: `wk_${generateId()}`,
       name: `Treino ${String.fromCharCode(65 + editingPlan.workouts.length)}`,
       exercises: []
     };
@@ -1773,10 +1791,10 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
     if (!editingPlan || !addingExerciseToWorkoutId) return;
 
     const plannedEx: PlannedExercise = {
-      id: `pe_${crypto.randomUUID()}`,
+      id: `pe_${generateId()}`,
       exerciseId: exerciseDef.id,
       sets: [
-        { id: `ps_${crypto.randomUUID()}`, minReps: 8, maxReps: 12, isDropSet: false, isToFailure: false, restSeconds: 60 }
+        { id: `ps_${generateId()}`, minReps: 8, maxReps: 12, isDropSet: false, isToFailure: false, restSeconds: 60 }
       ]
     };
 
@@ -1828,7 +1846,7 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
           const nextEx = w.exercises[idx + 1];
           
           const isGrouped = !!(currentEx.supersetGroupId && nextEx.supersetGroupId && currentEx.supersetGroupId === nextEx.supersetGroupId);
-          const newGroupId = isGrouped ? undefined : (currentEx.supersetGroupId || nextEx.supersetGroupId || `ss_${crypto.randomUUID()}`);
+          const newGroupId = isGrouped ? undefined : (currentEx.supersetGroupId || nextEx.supersetGroupId || `ss_${generateId()}`);
           
           return {
             ...w,
@@ -1868,7 +1886,7 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
     const firstSet = sets[0];
 
     const newSet: PlannedSet = {
-      id: `ps_${crypto.randomUUID()}`,
+      id: `ps_${generateId()}`,
       minReps: firstSet ? firstSet.minReps : 8,
       maxReps: firstSet ? firstSet.maxReps : 12,
       isDropSet: firstSet ? firstSet.isDropSet : false,
@@ -2060,7 +2078,7 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
           overloadSuggestion,
           supersetGroupId: pe.supersetGroupId,
           sets: pe.sets.map((ps, idx) => ({
-            id: `as_${crypto.randomUUID()}`,
+            id: `as_${generateId()}`,
             minReps: ps.minReps,
             maxReps: ps.maxReps,
             isDropSet: ps.isDropSet,
@@ -2253,7 +2271,7 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
           const firstSet = ex.sets[0];
           const lastSet = ex.sets[ex.sets.length - 1];
           const newSet: ActiveSet = {
-            id: `as_${crypto.randomUUID()}`,
+            id: `as_${generateId()}`,
             minReps: firstSet ? firstSet.minReps : 8,
             maxReps: firstSet ? firstSet.maxReps : 12,
             isDropSet: firstSet ? firstSet.isDropSet : false,
@@ -2331,12 +2349,12 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
     if (!activeWorkout) return;
 
     const newActiveEx: ActiveExercise = {
-      id: `ae_${crypto.randomUUID()}`,
+      id: `ae_${generateId()}`,
       exerciseId: exerciseDef.id,
       elapsedSeconds: 0,
       sets: [
         {
-          id: `as_${crypto.randomUUID()}`,
+          id: `as_${generateId()}`,
           minReps: 8,
           maxReps: 12,
           isDropSet: false,
@@ -2366,11 +2384,11 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
           workouts: p.workouts.map(w => {
             if (w.id !== workoutId) return w;
             const newPlannedExercises: PlannedExercise[] = activeExercises.map(ae => ({
-              id: ae.id.startsWith("ae_") ? `pe_${crypto.randomUUID()}` : ae.id,
+              id: ae.id.startsWith("ae_") ? `pe_${generateId()}` : ae.id,
               exerciseId: ae.exerciseId,
               supersetGroupId: ae.supersetGroupId,
               sets: ae.sets.map(s => ({
-                id: s.id.startsWith("as_") ? `ps_${crypto.randomUUID()}` : s.id,
+                id: s.id.startsWith("as_") ? `ps_${generateId()}` : s.id,
                 minReps: s.minReps || 8,
                 maxReps: s.maxReps || 12,
                 isDropSet: !!s.isDropSet,
@@ -2501,7 +2519,7 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
       }
 
       const newLog: HistoryLog = {
-        id: `h_${crypto.randomUUID()}`,
+        id: `h_${generateId()}`,
         name: activeWorkout.name,
         date: activeWorkout.startTime,
         durationMs: Date.now() - activeWorkout.startTime - finalIdleTime,
@@ -3728,3 +3746,4 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
     </div>
   );
 }
+
