@@ -110,6 +110,7 @@ export function DesktopPlanEditor(props: any) {
     const eIndex = newWorkouts[wIndex].exercises.findIndex(e => e.id === exerciseId);
     
     if (eIndex !== -1) {
+      newWorkouts[wIndex].exercises[eIndex].sets = newSets;
       newWorkouts[wIndex].exercises[eIndex].plannedSets = newSets;
       setEditingPlan({ ...editingPlan, workouts: newWorkouts });
     }
@@ -118,9 +119,10 @@ export function DesktopPlanEditor(props: any) {
   const updateSetInline = (exerciseId: string, setIndex: number, field: keyof PlannedSet, value: any) => {
     if (!activeWorkout) return;
     const exercise = activeWorkout.exercises.find((e: any) => e.id === exerciseId);
-    if (!exercise || !exercise.plannedSets) return;
+    const sets = exercise?.sets || exercise?.plannedSets;
+    if (!exercise || !sets) return;
     
-    const newSets = [...exercise.plannedSets];
+    const newSets = [...sets];
     newSets[setIndex] = { ...newSets[setIndex], [field]: value };
     updateExerciseSets(exerciseId, newSets);
   };
@@ -157,6 +159,10 @@ export function DesktopPlanEditor(props: any) {
             <button className="text-vulcanico bg-vulcanico/10 p-2 rounded-lg hover:bg-vulcanico/20 transition-colors">
               <Edit3 size={18} />
             </button>
+            <div className="flex items-center gap-1.5 font-mono text-[10px] text-green-400 bg-green-500/10 border border-green-500/20 px-3 py-1 rounded-full uppercase tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+              Auto-Salvo
+            </div>
           </div>
         </div>
 
@@ -348,7 +354,7 @@ export function DesktopPlanEditor(props: any) {
                             </div>
 
                             {/* Set Rows */}
-                            {ex.plannedSets?.map((set: any, setIdx: number) => (
+                            {(ex.sets || ex.plannedSets || [])?.map((set: any, setIdx: number) => (
                               <div key={set.id} className="grid grid-cols-12 gap-4 px-4 py-2 items-center hover:bg-black/20 rounded-lg transition-colors">
                                  <div className="col-span-2 font-mono text-xs text-concrete uppercase flex items-center gap-2">
                                    <div className="w-6 h-6 rounded-md bg-vulcanico/10 text-vulcanico flex items-center justify-center font-bold">
@@ -398,7 +404,8 @@ export function DesktopPlanEditor(props: any) {
                                  <div className="col-span-1 flex justify-center">
                                    <button 
                                      onClick={() => {
-                                       const newSets = ex.plannedSets.filter((s: any) => s.id !== set.id);
+                                       const currentSets = ex.sets || ex.plannedSets || [];
+                                       const newSets = currentSets.filter((s: any) => s.id !== set.id);
                                        updateExerciseSets(ex.id, newSets);
                                      }}
                                      className="text-concrete hover:text-red-500 transition-colors opacity-50 hover:opacity-100"
@@ -413,7 +420,8 @@ export function DesktopPlanEditor(props: any) {
                             <div className="px-4 mt-2">
                               <button 
                                 onClick={() => {
-                                  const newSets = [...(ex.plannedSets || [])];
+                                  const currentSets = ex.sets || ex.plannedSets || [];
+                                  const newSets = [...currentSets];
                                   const lastSet = newSets[newSets.length - 1] || { targetWeight: null, targetReps: "", restSeconds: 60 };
                                   newSets.push({
                                     id: Date.now().toString(),
@@ -485,7 +493,7 @@ export function DesktopPlanEditor(props: any) {
               </div>
             )}
              {filteredExercises.map((ex: any) => (
-                <div key={ex.id} className="bg-black/30 border border-concrete/10 hover:border-vulcanico/50 p-4 rounded-xl flex justify-between items-center group transition-colors cursor-pointer" onClick={() => handleAddExerciseToWorkout(ex)}>
+                <div key={ex.id} className="bg-black/30 border border-concrete/10 hover:border-vulcanico/50 p-4 rounded-xl flex justify-between items-center group transition-colors cursor-pointer" onClick={() => handleAddExerciseToWorkout(activeWorkout?.id, ex)}>
                    <div>
                      <h4 className="font-display text-sm text-white uppercase">{ex.name}</h4>
                      <span className="font-mono text-[10px] text-concrete uppercase mt-1 block" style={{ color: muscleColors[ex.primaryMuscle] }}>

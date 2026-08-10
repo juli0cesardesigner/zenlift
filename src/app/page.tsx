@@ -1787,8 +1787,39 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
     setExerciseSearchQuery("");
   };
 
-  const handleAddExerciseToWorkout = (exerciseDef: ExerciseDef) => {
-    if (!editingPlan || !addingExerciseToWorkoutId) return;
+  const handleAddExerciseToWorkout = (exerciseDefOrWorkoutId: any, exerciseDefParam?: ExerciseDef) => {
+    if (!editingPlan) return;
+
+    let exerciseDef: ExerciseDef;
+    let targetWorkoutId: string | null = null;
+
+    if (typeof exerciseDefOrWorkoutId === 'string') {
+      targetWorkoutId = exerciseDefOrWorkoutId;
+      exerciseDef = exerciseDefParam!;
+    } else {
+      exerciseDef = exerciseDefOrWorkoutId;
+      targetWorkoutId = addingExerciseToWorkoutId || editingWorkoutId || (editingPlan.workouts[0]?.id || null);
+    }
+
+    if (!exerciseDef) return;
+
+    let updatedWorkouts = [...editingPlan.workouts];
+
+    // If plan has no workouts yet or target workout not found, auto-create a workout
+    if (updatedWorkouts.length === 0 || (targetWorkoutId && !updatedWorkouts.some(w => w.id === targetWorkoutId))) {
+      const newWkId = targetWorkoutId || `wk_${generateId()}`;
+      const newWkName = `Treino ${String.fromCharCode(65 + updatedWorkouts.length)}`;
+      const newWorkout: WorkoutTemplate = {
+        id: newWkId,
+        name: newWkName,
+        exercises: []
+      };
+      updatedWorkouts.push(newWorkout);
+      targetWorkoutId = newWkId;
+      setEditingWorkoutId(newWkId);
+    } else if (!targetWorkoutId && updatedWorkouts.length > 0) {
+      targetWorkoutId = updatedWorkouts[0].id;
+    }
 
     const plannedEx: PlannedExercise = {
       id: `pe_${generateId()}`,
@@ -1797,24 +1828,28 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
         { id: `ps_${generateId()}`, minReps: 8, maxReps: 12, isDropSet: false, isToFailure: false, restSeconds: 60 }
       ]
     };
+    (plannedEx as any).plannedSets = plannedEx.sets;
+
+    const nextWorkouts = updatedWorkouts.map(w => {
+      if (w.id !== targetWorkoutId) return w;
+      return {
+        ...w,
+        exercises: [...(w.exercises || []), plannedEx]
+      };
+    });
 
     setEditingPlan({
       ...editingPlan,
-      workouts: editingPlan.workouts.map(w => {
-        if (w.id !== addingExerciseToWorkoutId) return w;
-        return {
-          ...w,
-          exercises: [...w.exercises, plannedEx]
-        };
-      })
+      workouts: nextWorkouts
     });
 
-    setAddingExerciseToWorkoutId(null);
-    // Open configuration immediately
-    setConfiguringExercise({
-      workoutId: addingExerciseToWorkoutId,
-      exercise: plannedEx
-    });
+    if (addingExerciseToWorkoutId) {
+      setAddingExerciseToWorkoutId(null);
+      setConfiguringExercise({
+        workoutId: targetWorkoutId,
+        exercise: plannedEx
+      });
+    }
   };
 
   const handleRemoveExerciseFromWorkout = (workoutId: string, plannedExId: string) => {

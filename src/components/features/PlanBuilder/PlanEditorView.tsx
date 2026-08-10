@@ -181,9 +181,15 @@ export function PlanEditorView(props: any) {
             <>
               {/* Header for Plan Creator */}
               <div className="flex-none p-6 pb-4 border-b border-concrete/20 flex justify-between items-center bg-noturno">
-                <h2 className="font-display text-2xl uppercase text-white leading-none">
-                  {plans.some(p => p.id === editingPlan.id) ? "Editar Plano" : "Novo Plano"}
-                </h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="font-display text-2xl uppercase text-white leading-none">
+                    {plans.some(p => p.id === editingPlan.id) ? "Editar Plano" : "Novo Plano"}
+                  </h2>
+                  <div className="flex items-center gap-1 font-mono text-[9px] text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                    Auto-Salvo
+                  </div>
+                </div>
                 <div className="flex items-center gap-4">
                   <button 
                     onClick={() => setEditingPlan(null)} 
