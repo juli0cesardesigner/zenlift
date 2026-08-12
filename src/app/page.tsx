@@ -843,10 +843,11 @@ export default function AppContainer() {
 
   const syncAllData = async (currentUser: SupabaseUser) => {
     setSyncStatus("syncing");
+    isSyncingFromRemoteRef.current = true;
     try {
-      // 1. Exercises
-      await pushCustomExercisesToSupabase(currentUser.id, exercises);
+      // 1. PULL & MERGE Exercises (Server-First)
       const pulledCustom = await pullCustomExercisesFromSupabase(currentUser.id);
+      let exercisesToPush: ExerciseDef[] = [];
       setExercises(prev => {
         const pulledIds = pulledCustom.map(pe => pe.id);
         // Clean up soft-deleted exercises from local state
@@ -869,55 +870,75 @@ export default function AppContainer() {
         const newSyncedIds = merged.filter(ex => ex.id.startsWith("ex_") && pulledIds.includes(ex.id)).map(ex => ex.id);
         syncedExerciseIdsRef.current = newSyncedIds;
         localStorage.setItem("is_synced_exercises_v1", JSON.stringify(newSyncedIds));
-        return ensureDefaultExercises(merged);
+        exercisesToPush = ensureDefaultExercises(merged);
+        return exercisesToPush;
       });
-
-      // 2. Plans
-      const plansPushed = await pushPlansToSupabase(currentUser.id, plans);
-      if (plansPushed) {
-        const pulledPlans = await pullPlansFromSupabase(currentUser.id);
-        setPlans(prev => {
-          const pulledIds = pulledPlans.map(pp => pp.id);
-          // Clean up soft-deleted plans and sub-elements from local state
-          const filteredPrev = prev
-            .filter(p => {
-              if (p.isDeleted) return false;
-              const wasSynced = syncedPlanIdsRef.current.includes(p.id);
-              const isPulled = pulledIds.includes(p.id);
-              if (wasSynced && !isPulled) return false;
-              return true;
-            })
-            .map(p => ({
-              ...p,
-              workouts: p.workouts
-                .filter(w => !w.isDeleted)
-                .map(w => ({
-                  ...w,
-                  exercises: w.exercises
-                    .filter(ex => !ex.isDeleted)
-                    .map(ex => ({
-                      ...ex,
-                      sets: ex.sets.filter(s => !s.isDeleted)
-                    }))
-                }))
-            }));
-
-          const mergedMap = new Map(filteredPrev.map(p => [p.id, p]));
-          pulledPlans.forEach(pp => {
-            mergedMap.set(pp.id, pp);
-          });
-          const merged = Array.from(mergedMap.values());
-
-          const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
-          syncedPlanIdsRef.current = newSyncedIds;
-          localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
-          return merged;
-        });
+      // PUSH unsynced custom exercises
+      if (exercisesToPush.length > 0) {
+        await pushCustomExercisesToSupabase(currentUser.id, exercisesToPush);
       }
 
-      // 3. History Logs
-      await pushHistoryToSupabase(currentUser.id, history);
+      // 2. PULL & MERGE Plans (Server-First)
+      const pulledPlans = await pullPlansFromSupabase(currentUser.id);
+      let plansToPush: Plan[] = [];
+      setPlans(prev => {
+        const pulledIds = pulledPlans.map(pp => pp.id);
+        // Clean up soft-deleted plans and sub-elements from local state
+        const filteredPrev = prev
+          .filter(p => {
+            if (p.isDeleted) return false;
+            const wasSynced = syncedPlanIdsRef.current.includes(p.id);
+            const isPulled = pulledIds.includes(p.id);
+            if (wasSynced && !isPulled) return false;
+            return true;
+          })
+          .map(p => ({
+            ...p,
+            workouts: p.workouts
+              .filter(w => !w.isDeleted)
+              .map(w => ({
+                ...w,
+                exercises: w.exercises
+                  .filter(ex => !ex.isDeleted)
+                  .map(ex => ({
+                    ...ex,
+                    sets: ex.sets.filter(s => !s.isDeleted)
+                  }))
+              }))
+          }));
+
+        // Server version takes priority for matching IDs
+        const mergedMap = new Map(filteredPrev.map(p => [p.id, p]));
+        pulledPlans.forEach(pp => {
+          mergedMap.set(pp.id, pp);
+        });
+        const merged = Array.from(mergedMap.values());
+
+        const newSyncedIds = merged.filter(p => pulledIds.includes(p.id)).map(p => p.id);
+        syncedPlanIdsRef.current = newSyncedIds;
+        localStorage.setItem("is_synced_plans_v1", JSON.stringify(newSyncedIds));
+
+        // Auto-select active plan if null or invalid
+        const validPlans = merged.filter(p => !p.isDeleted);
+        setActivePlanId(currentActive => {
+          if (currentActive && validPlans.some(p => p.id === currentActive)) {
+            return currentActive;
+          }
+          return validPlans.length > 0 ? validPlans[0].id : null;
+        });
+
+        plansToPush = merged;
+        return merged;
+      });
+
+      // PUSH unsynced/merged plans back to server
+      if (plansToPush.length > 0) {
+        await pushPlansToSupabase(currentUser.id, plansToPush);
+      }
+
+      // 3. PULL & MERGE History Logs (Server-First)
       const pulledHistory = await pullHistoryFromSupabase(currentUser.id);
+      let historyToPush: HistoryLog[] = [];
       setHistory(prev => {
         const pulledIds = pulledHistory.map(ph => ph.id);
         // Clean up soft-deleted history logs from local state
@@ -939,12 +960,18 @@ export default function AppContainer() {
         const newSyncedIds = merged.filter(log => pulledIds.includes(log.id)).map(log => log.id);
         syncedHistoryIdsRef.current = newSyncedIds;
         localStorage.setItem("is_synced_history_v1", JSON.stringify(newSyncedIds));
-        return merged.sort((a, b) => b.date - a.date);
+        historyToPush = merged.sort((a, b) => b.date - a.date);
+        return historyToPush;
       });
 
-      // 4. Focus
-      await pushFocusedExercisesToSupabase(currentUser.id, focusedExercises);
+      // PUSH unsynced history logs back to server
+      if (historyToPush.length > 0) {
+        await pushHistoryToSupabase(currentUser.id, historyToPush);
+      }
+
+      // 4. PULL & MERGE Focus (Server-First)
       const pulledFocus = await pullFocusedExercisesFromSupabase(currentUser.id);
+      let focusToPush: string[] = [];
       setFocusedExercises(prev => {
         const merged = [...prev];
         pulledFocus.forEach(pf => {
@@ -952,14 +979,23 @@ export default function AppContainer() {
             merged.push(pf);
           }
         });
+        focusToPush = merged;
         return merged;
       });
+
+      if (focusToPush.length > 0) {
+        await pushFocusedExercisesToSupabase(currentUser.id, focusToPush);
+      }
 
       setLastSyncedTime(Date.now());
       setSyncStatus("synced");
     } catch (err) {
       console.error("Erro geral na sincronização:", err);
       setSyncStatus("error");
+    } finally {
+      setTimeout(() => {
+        isSyncingFromRemoteRef.current = false;
+      }, 500);
     }
   };
 
