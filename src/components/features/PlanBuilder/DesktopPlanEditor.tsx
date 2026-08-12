@@ -32,7 +32,10 @@ export function DesktopPlanEditor(props: any) {
     handleApplySetConfigToAll,
     handleRemoveSetFromConfig,
     handleUpdateSetConfig,
-    handleAddSetToConfig
+    handleAddSetToConfig,
+    handleUpdateWorkoutNameInBuilder,
+    setConfirmConfig,
+    handleRemoveWorkoutFromBuilder
   } = props;
 
   // Active workout index
@@ -164,13 +167,18 @@ export function DesktopPlanEditor(props: any) {
             <ArrowLeft size={28} />
           </button>
           
-          <div className="flex items-center gap-4">
-            <h2 className="font-display text-3xl uppercase tracking-wider text-white">
-              {editingPlan.name || "Novo Plano"}
-            </h2>
-            <button className="text-vulcanico bg-vulcanico/10 p-2 rounded-lg hover:bg-vulcanico/20 transition-colors">
-              <Edit3 size={18} />
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="font-mono text-xs text-concrete uppercase shrink-0">Plano:</label>
+              <input 
+                type="text" 
+                value={editingPlan.name}
+                onChange={(e) => setEditingPlan({ ...editingPlan, name: e.target.value })}
+                placeholder="NOME DO PLANO"
+                className="bg-transparent border-b border-concrete/30 focus:border-vulcanico py-1 px-2 font-display text-2xl uppercase tracking-wider text-white outline-none transition-colors w-64 lg:w-80"
+              />
+              <Edit3 size={18} className="text-vulcanico shrink-0" />
+            </div>
             <div className="flex items-center gap-1.5 font-mono text-[10px] text-green-400 bg-green-500/10 border border-green-500/20 px-3 py-1 rounded-full uppercase tracking-wider">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
               Auto-Salvo
@@ -276,10 +284,42 @@ export function DesktopPlanEditor(props: any) {
             <>
               {/* Active Workout Header */}
               <div className="p-6 border-b border-concrete/20 flex flex-col bg-noturno sticky top-0 z-20 gap-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-display text-2xl text-white uppercase tracking-widest">
-                    {activeWorkout.name} <span className="text-vulcanico text-sm ml-2">({activeWorkout.exercises.length} Ex.)</span>
-                  </h3>
+                <div className="flex justify-between items-center gap-4">
+                  <div className="flex items-center gap-3 flex-1 max-w-lg">
+                    <label className="font-mono text-xs text-concrete uppercase shrink-0">Treino:</label>
+                    <input 
+                      type="text"
+                      value={activeWorkout.name}
+                      onChange={(e) => handleUpdateWorkoutNameInBuilder && handleUpdateWorkoutNameInBuilder(activeWorkout.id, e.target.value)}
+                      placeholder={`Treino ${String.fromCharCode(65 + wIdx)}`}
+                      className="bg-transparent border-b border-concrete/40 focus:border-vulcanico py-1 px-2 font-display text-2xl text-white uppercase outline-none transition-colors w-full"
+                    />
+                    <Edit3 size={18} className="text-vulcanico shrink-0" />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-xs text-vulcanico uppercase bg-vulcanico/10 border border-vulcanico/30 px-3 py-1 rounded-full font-bold">
+                      {activeWorkout.exercises.length} Ex.
+                    </span>
+                    {setConfirmConfig && handleRemoveWorkoutFromBuilder && (
+                      <button 
+                        onClick={() => {
+                          setConfirmConfig({
+                            isOpen: true,
+                            message: `Excluir o treino "${activeWorkout.name}"?`,
+                            onConfirm: () => {
+                              handleRemoveWorkoutFromBuilder(activeWorkout.id);
+                              const remaining = editingPlan.workouts.filter((w: any) => w.id !== activeWorkout.id);
+                              setEditingWorkoutId(remaining[0]?.id || null);
+                            }
+                          });
+                        }}
+                        className="text-concrete hover:text-red-500 transition-colors p-2.5 rounded-lg hover:bg-white/5"
+                        title="Excluir este treino"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 
                 {activeWorkout.exercises.length > 0 && (
@@ -367,9 +407,8 @@ export function DesktopPlanEditor(props: any) {
                             {/* Table Headers */}
                             <div className="grid grid-cols-12 gap-4 px-4 pb-2 border-b border-concrete/10 font-mono text-[10px] text-concrete uppercase tracking-widest font-bold">
                                <div className="col-span-2">Série</div>
-                               <div className="col-span-3">Reps Mín</div>
-                               <div className="col-span-3">Reps Máx</div>
-                               <div className="col-span-3">Descanso</div>
+                               <div className="col-span-5">Repetições</div>
+                               <div className="col-span-4">Descanso (s)</div>
                                <div className="col-span-1 text-center"></div>
                             </div>
 
@@ -382,26 +421,19 @@ export function DesktopPlanEditor(props: any) {
                                    </div>
                                  </div>
                                  
-                                 {/* Batch Input: Min Reps */}
-                                 <div className="col-span-3 relative">
+                                 {/* Batch Input: Repetições */}
+                                 <div className="col-span-5 relative">
                                    <input 
                                      type="number" 
                                      inputMode="numeric"
-                                     value={set.minReps || ""}
-                                     onChange={(e) => updateSetInline(ex.id, setIdx, "minReps", parseInt(e.target.value) || 0)}
-                                     placeholder="Mínimo"
-                                     className="w-full bg-noturno border border-concrete/20 focus:border-vulcanico rounded-lg px-3 py-2 font-mono text-sm text-white text-center outline-none transition-colors"
-                                   />
-                                 </div>
-
-                                 {/* Batch Input: Max Reps */}
-                                 <div className="col-span-3 relative">
-                                   <input 
-                                     type="number" 
-                                     inputMode="numeric"
-                                     value={set.maxReps || ""}
-                                     onChange={(e) => updateSetInline(ex.id, setIdx, "maxReps", parseInt(e.target.value) || 0)}
-                                     placeholder="Máximo"
+                                     value={set.reps ?? set.minReps ?? ""}
+                                     onChange={(e) => {
+                                       const val = parseInt(e.target.value) || 0;
+                                       updateSetInline(ex.id, setIdx, "reps", val);
+                                       updateSetInline(ex.id, setIdx, "minReps", val);
+                                       updateSetInline(ex.id, setIdx, "maxReps", val);
+                                     }}
+                                     placeholder="10"
                                      className="w-full bg-noturno border border-concrete/20 focus:border-vulcanico rounded-lg px-3 py-2 font-mono text-sm text-white text-center outline-none transition-colors"
                                    />
                                  </div>
@@ -642,41 +674,29 @@ export function DesktopPlanEditor(props: any) {
                     </div>
 
                     {/* Config Inputs */}
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="font-mono text-[9px] text-concrete uppercase tracking-widest block mb-2 text-center">Reps Mín</label>
+                        <label className="font-mono text-xs text-concrete uppercase tracking-widest block mb-2 text-center">Repetições</label>
                         <div className="flex items-center justify-between border-b border-concrete/30 py-1 select-none">
                           <button
                             type="button"
-                            onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { minReps: Math.max(0, set.minReps - 1) })}
+                            onClick={() => {
+                              const currentReps = set.reps ?? set.minReps ?? 10;
+                              const newReps = Math.max(0, currentReps - 1);
+                              handleUpdateSetConfig && handleUpdateSetConfig(set.id, { reps: newReps, minReps: newReps, maxReps: newReps });
+                            }}
                             className="text-concrete hover:text-white p-1 transition-colors"
                           >
                             <ChevronDown size={16} />
                           </button>
-                          <span className="font-mono text-lg text-white font-bold">{set.minReps}</span>
+                          <span className="font-mono text-lg text-white font-bold">{set.reps ?? set.minReps ?? 10}</span>
                           <button
                             type="button"
-                            onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { minReps: set.minReps + 1 })}
-                            className="text-concrete hover:text-white p-1 transition-colors"
-                          >
-                            <ChevronUp size={16} />
-                          </button>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="font-mono text-[9px] text-concrete uppercase tracking-widest block mb-2 text-center">Reps Máx</label>
-                        <div className="flex items-center justify-between border-b border-concrete/30 py-1 select-none">
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { maxReps: Math.max(0, set.maxReps - 1) })}
-                            className="text-concrete hover:text-white p-1 transition-colors"
-                          >
-                            <ChevronDown size={16} />
-                          </button>
-                          <span className="font-mono text-lg text-white font-bold">{set.maxReps}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { maxReps: set.maxReps + 1 })}
+                            onClick={() => {
+                              const currentReps = set.reps ?? set.minReps ?? 10;
+                              const newReps = currentReps + 1;
+                              handleUpdateSetConfig && handleUpdateSetConfig(set.id, { reps: newReps, minReps: newReps, maxReps: newReps });
+                            }}
                             className="text-concrete hover:text-white p-1 transition-colors"
                           >
                             <ChevronUp size={16} />

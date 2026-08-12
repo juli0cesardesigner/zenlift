@@ -24,8 +24,9 @@ export type ExerciseDef = {
 
 export type PlannedSet = {
   id: string;
-  minReps: number;
-  maxReps: number;
+  reps?: number;
+  minReps?: number;
+  maxReps?: number;
   isDropSet: boolean;
   isToFailure: boolean;
   restSeconds: number;
@@ -64,8 +65,9 @@ export type SessionMode = "solo" | "dual";
 
 export type ActiveSet = {
   id: string;
-  minReps: number;
-  maxReps: number;
+  repsTarget?: number;
+  minReps?: number;
+  maxReps?: number;
   isDropSet: boolean;
   isToFailure: boolean;
   restSeconds: number;
@@ -133,8 +135,9 @@ export type HistoryLog = {
     elapsedSeconds?: number;
     supersetGroupId?: string;
     sets: {
-      minReps: number;
-      maxReps: number;
+      repsTarget?: number;
+      minReps?: number;
+      maxReps?: number;
       isDropSet: boolean;
       isToFailure: boolean;
       weight: string;

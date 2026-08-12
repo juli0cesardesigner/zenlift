@@ -3,7 +3,6 @@ import { DesktopPlanEditor } from '../components/features/PlanBuilder/DesktopPla
 import { AdvancedStatsDashboard } from '../components/features/Stats/AdvancedStatsDashboard';
 import { MobileNav } from '../components/layout/MobileNav';
 import { DesktopNav } from '../components/layout/DesktopNav';
-import { SidebarNav } from '../components/layout/SidebarNav';
 import { ActiveWorkoutView } from '../components/features/ActiveWorkout/ActiveWorkoutView';
 import { PlanEditorView } from '../components/features/PlanBuilder/PlanEditorView';
 import { PlanListView } from '../components/features/PlanBuilder/PlanListView';
@@ -109,6 +108,28 @@ export default function AppContainer() {
   const [selectedSessionMode, setSelectedSessionMode] = useState<"solo" | "dual">("solo");
   const [partner1NameInput, setPartner1NameInput] = useState("Atleta 1");
   const [partner2NameInput, setPartner2NameInput] = useState("Atleta 2");
+  const [partnerHistory, setPartnerHistory] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("zenlift_partner_history");
+      if (saved) {
+        setPartnerHistory(JSON.parse(saved));
+      }
+    } catch (e) {}
+  }, []);
+
+  const savePartnerName = (name: string) => {
+    if (!name || !name.trim() || name === "Atleta 1" || name === "Atleta 2") return;
+    const clean = name.trim();
+    setPartnerHistory(prev => {
+      const updated = Array.from(new Set([clean, ...prev])).slice(0, 20);
+      try {
+        localStorage.setItem("zenlift_partner_history", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
 
   useEffect(() => {
     setIsEditingDirectly(false);
@@ -2026,6 +2047,10 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
     partner1Name: string = "Atleta 1",
     partner2Name: string = "Atleta 2"
   ) => {
+    if (sessionMode === "dual") {
+      savePartnerName(partner1Name);
+      savePartnerName(partner2Name);
+    }
     const session: ActiveWorkoutSession = {
       planId: activePlanId || "",
       workoutId: workout.id,
@@ -2167,17 +2192,41 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
   ) => {
     if (!activeWorkout) return;
 
+    const isDual = activeWorkout.sessionMode === "dual";
     const targetField = partner === "p2"
       ? (field === "weight" ? "weightP2" : field === "reps" ? "repsP2" : "completedP2")
       : field;
 
-    const isCompleting = field === "completed" && value === true;
+    // Determine set completion state
+    let justCompletedFully = false;
     let isLastSetOfWorkout = false;
 
-    if (isCompleting) {
-      isLastSetOfWorkout = activeWorkout.exercises.every(ex =>
-        ex.sets.every(s => s.id === setId ? true : (partner === "p2" ? s.completedP2 : s.completed))
-      );
+    if (field === "completed") {
+      let targetSet: any = null;
+      let targetEx: any = null;
+      
+      activeWorkout.exercises.forEach(ex => {
+        ex.sets.forEach(s => {
+          if (s.id === setId) {
+            targetSet = s;
+            targetEx = ex;
+          }
+        });
+      });
+
+      if (targetSet && targetEx) {
+        const wasSetFullyCompleted = isDual ? (targetSet.completed && targetSet.completedP2) : targetSet.completed;
+        const willP1Complete = partner === "p1" ? value : targetSet.completed;
+        const willP2Complete = partner === "p2" ? value : targetSet.completedP2;
+        const willSetFullyComplete = isDual ? (willP1Complete && willP2Complete) : willP1Complete;
+
+        if (willSetFullyComplete && !wasSetFullyCompleted) {
+          justCompletedFully = true;
+          isLastSetOfWorkout = activeWorkout.exercises.every(ex =>
+            ex.sets.every(s => s.id === setId ? true : (isDual ? (s.completed && s.completedP2) : s.completed))
+          );
+        }
+      }
     }
 
     setActiveWorkout(prev => {
@@ -2191,18 +2240,16 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
           const updatedSets = ex.sets.map((s, sIdx) => {
             if (s.id !== setId) return s;
 
-            // Trigger Rest Timer
+            // Check Superset Grouping
             const groupExercises = prev.exercises.filter(e => e.supersetGroupId && e.supersetGroupId === ex.supersetGroupId);
-            const lastGroupEx = groupExercises[groupExercises.length - 1];
-            const isLastExerciseInGroup = lastGroupEx ? lastGroupEx.id === ex.id : true;
+            const isSupersetGroup = groupExercises.length > 1;
+            const currentGroupIdx = isSupersetGroup ? groupExercises.findIndex(e => e.id === ex.id) : -1;
+            const isLastExerciseInSuperset = isSupersetGroup ? (currentGroupIdx === groupExercises.length - 1) : true;
 
-            const isAlreadyDone = partner === "p2" ? s.completedP2 : s.completed;
-
-            if (field === "completed" && value === true && s.restSeconds > 0 && !isAlreadyDone && !isLastSetOfWorkout && isLastExerciseInGroup) {
+            if (justCompletedFully && s.restSeconds > 0 && !isLastSetOfWorkout && isLastExerciseInSuperset) {
               const exDef = exerciseMap[ex.exerciseId];
               const setIndex = sIdx + 1;
               
-              // Determine next exercise
               let nextExName: string | undefined = undefined;
               let nextExLastWeight: string | undefined = undefined;
               
@@ -2213,7 +2260,6 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
                   const nextExDef = exerciseMap[nextEx.exerciseId];
                   nextExName = nextExDef?.name;
                   
-                  // Find in history
                   for (let i = 0; i < history.length; i++) {
                     const hLog = history[i];
                     const hEx = hLog.exercises.find(h => h.name === nextExName);
@@ -2277,7 +2323,9 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
       setTimeout(() => {
         setDialog({
           title: "Treino Concluído!",
-          message: "Você finalizou a última série de todos os exercícios. Deseja finalizar o treino?",
+          message: isDual 
+            ? "Ambos os atletas concluíram a última série de todos os exercícios! Deseja finalizar o treino?"
+            : "Você finalizou a última série de todos os exercícios. Deseja finalizar o treino?",
           confirmText: "Finalizar Treino",
           cancelText: "Voltar",
           onConfirm: () => {
@@ -2391,12 +2439,18 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
     setReplacingActiveExerciseId(null);
   };
 
-  const handleAddExerciseToActiveWorkout = (exerciseDef: ExerciseDef) => {
+  const handleAddExerciseToActiveWorkout = (exerciseInput: ExerciseDef | string) => {
     if (!activeWorkout) return;
+
+    const exerciseDef = typeof exerciseInput === 'string'
+      ? (exercises.find(e => e.id === exerciseInput) || exerciseMap[exerciseInput])
+      : exerciseInput;
+
+    const exId = exerciseDef?.id || (typeof exerciseInput === 'string' ? exerciseInput : `ex_${generateId()}`);
 
     const newActiveEx: ActiveExercise = {
       id: `ae_${generateId()}`,
-      exerciseId: exerciseDef.id,
+      exerciseId: exId,
       elapsedSeconds: 0,
       sets: [
         {
@@ -3130,7 +3184,7 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
             <PlanEditorView editingPlan={editingPlan} editingWorkoutId={editingWorkoutId} setEditingWorkoutId={setEditingWorkoutId} handleMoveWorkout={handleMoveWorkout} handleRemoveExerciseFromWorkout={handleRemoveExerciseFromWorkout} handleOpenAddExerciseToWorkout={handleOpenAddExerciseToWorkout} handleAddWorkoutToBuilder={handleAddWorkoutToBuilder} addingExerciseToWorkoutId={addingExerciseToWorkoutId} setAddingExerciseToWorkoutId={setAddingExerciseToWorkoutId} exerciseSearchQuery={exerciseSearchQuery} setExerciseSearchQuery={setExerciseSearchQuery} filteredExercises={filteredExercises} filteredExercisesByMuscle={filteredExercisesByMuscle} handleAddExerciseToWorkout={handleAddExerciseToWorkout} handleCreateAndAddExerciseInline={handleCreateAndAddExerciseInline} configuringExercise={configuringExercise} setConfiguringExercise={setConfiguringExercise} exerciseMap={exerciseMap} handleSaveExerciseConfig={handleSaveExerciseConfig} handleApplySetConfigToAll={handleApplySetConfigToAll} handleRemoveSetFromConfig={handleRemoveSetFromConfig} handleUpdateSetConfig={handleUpdateSetConfig} handleAddSetToConfig={handleAddSetToConfig} handleToggleConjugate={handleToggleConjugate} handleSavePlan={handleSavePlan} setEditingPlan={setEditingPlan} plans={plans} exerciseMapByName={exerciseMapByName}  handleUpdateWorkoutNameInBuilder={handleUpdateWorkoutNameInBuilder} setConfirmConfig={setConfirmConfig} handleRemoveWorkoutFromBuilder={handleRemoveWorkoutFromBuilder} />
           </div>
           <div className="hidden lg:flex absolute inset-0 z-50 bg-noturno flex-col overflow-hidden">
-            <DesktopPlanEditor editingPlan={editingPlan} editingWorkoutId={editingWorkoutId} setEditingWorkoutId={setEditingWorkoutId} handleMoveWorkout={handleMoveWorkout} handleRemoveExerciseFromWorkout={handleRemoveExerciseFromWorkout} handleOpenAddExerciseToWorkout={handleOpenAddExerciseToWorkout} handleAddWorkoutToBuilder={handleAddWorkoutToBuilder} addingExerciseToWorkoutId={addingExerciseToWorkoutId} setAddingExerciseToWorkoutId={setAddingExerciseToWorkoutId} exerciseSearchQuery={exerciseSearchQuery} setExerciseSearchQuery={setExerciseSearchQuery} filteredExercises={filteredExercises} filteredExercisesByMuscle={filteredExercisesByMuscle} handleAddExerciseToWorkout={handleAddExerciseToWorkout} handleCreateAndAddExerciseInline={handleCreateAndAddExerciseInline} configuringExercise={configuringExercise} setConfiguringExercise={setConfiguringExercise} exerciseMap={exerciseMap} handleSaveExerciseConfig={handleSaveExerciseConfig} handleApplySetConfigToAll={handleApplySetConfigToAll} handleRemoveSetFromConfig={handleRemoveSetFromConfig} handleUpdateSetConfig={handleUpdateSetConfig} handleAddSetToConfig={handleAddSetToConfig} handleToggleConjugate={handleToggleConjugate} handleSavePlan={handleSavePlan} setEditingPlan={setEditingPlan} plans={plans} exerciseMapByName={exerciseMapByName} />
+            <DesktopPlanEditor editingPlan={editingPlan} editingWorkoutId={editingWorkoutId} setEditingWorkoutId={setEditingWorkoutId} handleMoveWorkout={handleMoveWorkout} handleRemoveExerciseFromWorkout={handleRemoveExerciseFromWorkout} handleOpenAddExerciseToWorkout={handleOpenAddExerciseToWorkout} handleAddWorkoutToBuilder={handleAddWorkoutToBuilder} addingExerciseToWorkoutId={addingExerciseToWorkoutId} setAddingExerciseToWorkoutId={setAddingExerciseToWorkoutId} exerciseSearchQuery={exerciseSearchQuery} setExerciseSearchQuery={setExerciseSearchQuery} filteredExercises={filteredExercises} filteredExercisesByMuscle={filteredExercisesByMuscle} handleAddExerciseToWorkout={handleAddExerciseToWorkout} handleCreateAndAddExerciseInline={handleCreateAndAddExerciseInline} configuringExercise={configuringExercise} setConfiguringExercise={setConfiguringExercise} exerciseMap={exerciseMap} handleSaveExerciseConfig={handleSaveExerciseConfig} handleApplySetConfigToAll={handleApplySetConfigToAll} handleRemoveSetFromConfig={handleRemoveSetFromConfig} handleUpdateSetConfig={handleUpdateSetConfig} handleAddSetToConfig={handleAddSetToConfig} handleToggleConjugate={handleToggleConjugate} handleSavePlan={handleSavePlan} setEditingPlan={setEditingPlan} plans={plans} exerciseMapByName={exerciseMapByName} handleUpdateWorkoutNameInBuilder={handleUpdateWorkoutNameInBuilder} setConfirmConfig={setConfirmConfig} handleRemoveWorkoutFromBuilder={handleRemoveWorkoutFromBuilder} />
           </div>
         </>
       )}
@@ -3555,11 +3609,18 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
             {selectedSessionMode === "dual" && (
               <div className="flex flex-col gap-3 bg-black/40 p-4 rounded-xl border border-white/10 animate-fade-in">
                 <p className="font-mono text-[10px] text-cyan-400 uppercase font-bold">Nomes da Dupla:</p>
+                <datalist id="partner-history-list">
+                  {partnerHistory.map(p => (
+                    <option key={p} value={p} />
+                  ))}
+                </datalist>
                 <div className="flex flex-col gap-2">
                   <div>
                     <label className="font-mono text-[9px] text-concrete uppercase">Parceiro 1</label>
                     <input
                       type="text"
+                      list="partner-history-list"
+                      placeholder="Atleta 1"
                       value={partner1NameInput}
                       onChange={e => setPartner1NameInput(e.target.value)}
                       className="w-full bg-noturno border border-concrete/30 rounded-lg px-3 py-1.5 font-mono text-xs text-white focus:outline-none focus:border-vulcanico"
@@ -3569,6 +3630,8 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
                     <label className="font-mono text-[9px] text-concrete uppercase">Parceiro 2</label>
                     <input
                       type="text"
+                      list="partner-history-list"
+                      placeholder="Atleta 2"
                       value={partner2NameInput}
                       onChange={e => setPartner2NameInput(e.target.value)}
                       className="w-full bg-noturno border border-concrete/30 rounded-lg px-3 py-1.5 font-mono text-xs text-white focus:outline-none focus:border-cyan-400"

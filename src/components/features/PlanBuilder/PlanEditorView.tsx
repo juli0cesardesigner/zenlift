@@ -28,7 +28,7 @@ export function PlanEditorView(props: any) {
             return (
               <>
                 {/* Header for Workout Editor */}
-                <div className="flex-none p-6 pb-4 border-b border-concrete/20 flex justify-between items-center bg-noturno">
+                <div className="flex-none p-4 sm:p-6 pb-4 border-b border-concrete/20 flex justify-between items-center bg-noturno">
                   <button 
                     onClick={() => setEditingWorkoutId(null)}
                     className="text-concrete hover:text-white transition-colors"
@@ -47,7 +47,7 @@ export function PlanEditorView(props: any) {
                 </div>
 
                 {/* Workout Editor Body */}
-                <div className="flex-1 overflow-y-auto p-6 pb-20">
+                <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 pb-20">
                   <div className="flex flex-col gap-8">
                     {/* Workout Name + Delete Button side-by-side */}
                     <div className="flex items-end gap-4">
@@ -132,7 +132,8 @@ export function PlanEditorView(props: any) {
                                         } else if (type === "custom") {
                                           methodTag = ` [${(s.customMethodName || "CST").substring(0,3)}]`;
                                         }
-                                        return `${s.minReps}-${s.maxReps}r${methodTag}`;
+                                        const repsCount = s.reps ?? s.minReps ?? 10;
+                                        return `${repsCount}r${methodTag}`;
                                       }).join(" / ")
                                     }
                                   </div>
@@ -211,7 +212,7 @@ export function PlanEditorView(props: any) {
               </div>
 
               {/* Plan Builder Body */}
-              <div className="flex-1 overflow-y-auto p-6 pb-20">
+              <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 pb-20">
                 <div className="flex flex-col gap-8">
                   {/* Plan Name */}
                   <div className="flex flex-col">
@@ -464,41 +465,29 @@ export function PlanEditorView(props: any) {
                   </div>
 
                   {/* Config Inputs */}
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="font-mono text-[9px] text-concrete uppercase tracking-widest block mb-2 text-center">Reps Mín</label>
+                      <label className="font-mono text-xs text-concrete uppercase tracking-widest block mb-2 text-center">Repetições</label>
                       <div className="flex items-center justify-between border-b border-concrete/30 py-1 select-none">
                         <button
                           type="button"
-                          onClick={() => handleUpdateSetConfig(set.id, { minReps: Math.max(0, set.minReps - 1) })}
+                          onClick={() => {
+                            const currentReps = set.reps ?? set.minReps ?? 10;
+                            const newReps = Math.max(0, currentReps - 1);
+                            handleUpdateSetConfig(set.id, { reps: newReps, minReps: newReps, maxReps: newReps });
+                          }}
                           className="text-concrete hover:text-white p-1 transition-colors"
                         >
                           <ChevronDown size={16} />
                         </button>
-                        <span className="font-mono text-lg text-white font-bold">{set.minReps}</span>
+                        <span className="font-mono text-lg text-white font-bold">{set.reps ?? set.minReps ?? 10}</span>
                         <button
                           type="button"
-                          onClick={() => handleUpdateSetConfig(set.id, { minReps: set.minReps + 1 })}
-                          className="text-concrete hover:text-white p-1 transition-colors"
-                        >
-                          <ChevronUp size={16} />
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="font-mono text-[9px] text-concrete uppercase tracking-widest block mb-2 text-center">Reps Máx</label>
-                      <div className="flex items-center justify-between border-b border-concrete/30 py-1 select-none">
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateSetConfig(set.id, { maxReps: Math.max(0, set.maxReps - 1) })}
-                          className="text-concrete hover:text-white p-1 transition-colors"
-                        >
-                          <ChevronDown size={16} />
-                        </button>
-                        <span className="font-mono text-lg text-white font-bold">{set.maxReps}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateSetConfig(set.id, { maxReps: set.maxReps + 1 })}
+                          onClick={() => {
+                            const currentReps = set.reps ?? set.minReps ?? 10;
+                            const newReps = currentReps + 1;
+                            handleUpdateSetConfig(set.id, { reps: newReps, minReps: newReps, maxReps: newReps });
+                          }}
                           className="text-concrete hover:text-white p-1 transition-colors"
                         >
                           <ChevronUp size={16} />

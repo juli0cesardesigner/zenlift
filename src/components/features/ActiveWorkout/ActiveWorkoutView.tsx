@@ -20,7 +20,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
 {activeWorkout && !isWorkoutMinimized && (
         <div className="absolute inset-0 z-40 bg-noturno flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="flex-none p-3.5 sm:p-5 border-b border-concrete/20 bg-noturno z-10 flex flex-col gap-2">
+          <div className="flex-none p-3.5 sm:p-5 glass-panel border-b border-white/10 z-10 flex flex-col gap-2">
             {/* Line 1: Workout Name on Left + Minimize & Cancel on Right */}
             <div className="flex justify-between items-center w-full">
               <h2 className="font-display text-2xl uppercase text-white leading-none truncate">
@@ -353,12 +353,13 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
 
                         {/* Sets Header */}
                         {activeWorkout.sessionMode === "dual" ? (
-                          <div className="grid grid-cols-12 font-mono text-[10px] text-cyan-400 uppercase mb-2 text-center font-bold px-0.5">
-                            <div className="col-span-1">Série</div>
-                            <div className="col-span-2">Alvo</div>
-                            <div className="col-span-9 flex justify-around">
-                              <span className="text-vulcanico font-extrabold">{activeWorkout.partner1Name || "P1"}</span>
-                              <span className="text-cyan-400 font-extrabold">{activeWorkout.partner2Name || "P2"}</span>
+                          <div className="grid grid-cols-12 font-mono text-[10px] uppercase mb-2 text-center font-bold px-0.5">
+                            <div className="col-span-2 text-concrete">Série</div>
+                            <div className="col-span-5 text-vulcanico font-extrabold truncate px-1">
+                              {activeWorkout.partner1Name || "Atleta 1"}
+                            </div>
+                            <div className="col-span-5 text-cyan-400 font-extrabold truncate px-1">
+                              {activeWorkout.partner2Name || "Atleta 2"}
                             </div>
                           </div>
                         ) : (
@@ -380,10 +381,8 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                         {/* Sets Rows */}
                         <div className="flex flex-col gap-2">
                           {ae.sets.map((set, sIdx) => {
-                            const hasMinMax = set.minReps !== undefined;
-                            const targetText = hasMinMax 
-                              ? `${set.minReps}-${set.maxReps}` 
-                              : "Livre";
+                            const repsTarget = (set as any).repsTarget ?? (set as any).reps ?? set.minReps;
+                            const targetText = repsTarget !== undefined ? `${repsTarget}` : "Livre";
 
                             const isActiveSet = set.id === globalActiveSetId;
                             const isFullyCompleted = activeWorkout.sessionMode === "dual" ? (set.completed && set.completedP2) : set.completed;
@@ -395,7 +394,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                   isFullyCompleted ? "bg-vulcanico/10 opacity-70" : "bg-concrete/5"
                                 } ${isActiveSet ? "ring-2 ring-vulcanico shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse" : ""}`}
                               >
-                                <div className={`${activeWorkout.sessionMode === "dual" ? "col-span-1" : "col-span-2"} font-mono text-xs flex flex-col items-center justify-center`}>
+                                <div className="col-span-2 font-mono text-xs flex flex-col items-center justify-center">
                                   <span className="text-white font-bold">{sIdx + 1}</span>
                                   <div className="flex flex-wrap gap-0.5 mt-0.5 justify-center">
                                     {(() => {
@@ -424,12 +423,14 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                   </div>
                                 </div>
 
-                                <div className={`${activeWorkout.sessionMode === "dual" ? "col-span-2" : "col-span-3"} font-mono text-[11px] text-concrete`}>
-                                  <div>{targetText}</div>
-                                </div>
+                                {activeWorkout.sessionMode === "dual" ? null : (
+                                  <div className="col-span-3 font-mono text-[11px] text-concrete">
+                                    <div>{targetText}</div>
+                                  </div>
+                                )}
 
                                 {activeWorkout.sessionMode === "dual" ? (
-                                  <div className="col-span-9 grid grid-cols-2 gap-1.5 px-0.5">
+                                  <div className="col-span-10 grid grid-cols-2 gap-1.5 px-0.5">
                                     {/* P1 Box */}
                                     <div className={`p-1.5 rounded-lg border flex items-center justify-between gap-1 transition-all ${
                                       set.completed ? "bg-vulcanico/20 border-vulcanico/50 shadow-[0_0_10px_rgba(255,65,3,0.15)]" : "bg-black/30 border-white/10"
@@ -1101,7 +1102,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                               if (replacingActiveExerciseId) {
                                 handleReplaceExerciseInActiveWorkout(replacingActiveExerciseId, ex.id);
                               } else {
-                                handleAddExerciseToActiveWorkout(ex.id);
+                                handleAddExerciseToActiveWorkout(ex);
                               }
                             }}
                             className="text-left py-3 border-b border-concrete/10 hover:text-vulcanico transition-colors"

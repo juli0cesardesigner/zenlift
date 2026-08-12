@@ -171,7 +171,7 @@ export function PlanListView(props: any) {
                               <div className="mt-6 flex flex-col gap-2 relative z-10 w-full px-4">
                                 <button
                                   onClick={() => handleStartWorkout(w, activePlan.name)}
-                                  className="w-full bg-vulcanico hover:bg-white text-noturno font-display text-lg uppercase py-3 rounded-lg tracking-wide transition-all duration-300 transform lg:translate-y-2 lg:opacity-0 lg:group-hover:translate-y-0 lg:group-hover:opacity-100 shadow-xl shadow-vulcanico/20"
+                                  className="w-full bg-vulcanico hover:bg-white text-noturno font-display text-base lg:text-lg uppercase py-3 rounded-xl tracking-wide font-bold transition-all duration-200 shadow-lg shadow-vulcanico/20 active:scale-98"
                                 >
                                   Iniciar Treino
                                 </button>
