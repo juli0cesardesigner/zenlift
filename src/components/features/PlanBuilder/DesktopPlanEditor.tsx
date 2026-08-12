@@ -25,7 +25,14 @@ export function DesktopPlanEditor(props: any) {
     handleSavePlan,
     setEditingPlan,
     exerciseMap,
-    exerciseMapByName
+    exerciseMapByName,
+    configuringExercise,
+    setConfiguringExercise,
+    handleSaveExerciseConfig,
+    handleApplySetConfigToAll,
+    handleRemoveSetFromConfig,
+    handleUpdateSetConfig,
+    handleAddSetToConfig
   } = props;
 
   // Active workout index
@@ -338,6 +345,14 @@ export function DesktopPlanEditor(props: any) {
                               </button>
 
                               <button 
+                                onClick={() => setConfiguringExercise && setConfiguringExercise({ workoutId: activeWorkout.id, exercise: ex })}
+                                className="p-2 text-concrete hover:text-vulcanico hover:bg-white/10 rounded-lg transition-colors"
+                                title="Configurar Exercício (Métodos / Séries)"
+                              >
+                                <Edit3 size={18} />
+                              </button>
+
+                              <button 
                                 onClick={() => handleRemoveExerciseFromWorkout(activeWorkout.id, ex.id)}
                                 className="p-2 text-concrete hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
                                 title="Remover Exercício"
@@ -572,6 +587,309 @@ export function DesktopPlanEditor(props: any) {
           </div>
         </div>
       </div>
+
+      {/* -------------------- CONFIG EXERCISE SETS PANEL (MODAL DESKTOP) -------------------- */}
+      {configuringExercise && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-hidden">
+          <div className="bg-noturno border border-concrete/20 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="flex-none p-6 pb-4 border-b border-concrete/20 flex justify-between items-center bg-noturno">
+              <div>
+                <span className="font-mono text-[9px] text-concrete uppercase tracking-widest">Configurar Séries & Métodos</span>
+                <h2 className="font-display text-2xl uppercase text-white leading-none mt-1">
+                  {exerciseMap[configuringExercise.exercise.exerciseId]?.name || (exerciseMapByName && exerciseMapByName[configuringExercise.exercise.exerciseId]?.name) || "Exercício"}
+                </h2>
+              </div>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setConfiguringExercise && setConfiguringExercise(null)} 
+                  className="text-concrete hover:text-white transition-colors"
+                >
+                  <X size={24} />
+                </button>
+                <button 
+                  onClick={handleSaveExerciseConfig} 
+                  className="bg-vulcanico text-noturno font-bold font-mono text-xs uppercase px-4 py-2 rounded-xl flex items-center gap-1 hover:bg-white transition-colors"
+                  title="Salvar"
+                >
+                  <Save size={16} /> Salvar
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+              <div className="flex flex-col gap-6">
+                {configuringExercise.exercise.sets.map((set: any, sIdx: number) => (
+                  <div key={set.id} className="pb-6 border-b border-concrete/10 flex flex-col gap-4">
+                    <div className="flex justify-between items-center">
+                      <span className="font-mono text-xs text-vulcanico uppercase font-bold">Série {sIdx + 1}</span>
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => handleApplySetConfigToAll && handleApplySetConfigToAll(set.id)}
+                          className="text-concrete hover:text-vulcanico flex items-center gap-1 font-mono text-[9px] uppercase"
+                          title="Aplicar esta configuração em todas as outras séries"
+                        >
+                          <Copy size={12} /> Replicar Config
+                        </button>
+                        {configuringExercise.exercise.sets.length > 1 && (
+                          <button
+                            onClick={() => handleRemoveSetFromConfig && handleRemoveSetFromConfig(set.id)}
+                            className="text-red-500 hover:text-red-400"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Config Inputs */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="font-mono text-[9px] text-concrete uppercase tracking-widest block mb-2 text-center">Reps Mín</label>
+                        <div className="flex items-center justify-between border-b border-concrete/30 py-1 select-none">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { minReps: Math.max(0, set.minReps - 1) })}
+                            className="text-concrete hover:text-white p-1 transition-colors"
+                          >
+                            <ChevronDown size={16} />
+                          </button>
+                          <span className="font-mono text-lg text-white font-bold">{set.minReps}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { minReps: set.minReps + 1 })}
+                            className="text-concrete hover:text-white p-1 transition-colors"
+                          >
+                            <ChevronUp size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="font-mono text-[9px] text-concrete uppercase tracking-widest block mb-2 text-center">Reps Máx</label>
+                        <div className="flex items-center justify-between border-b border-concrete/30 py-1 select-none">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { maxReps: Math.max(0, set.maxReps - 1) })}
+                            className="text-concrete hover:text-white p-1 transition-colors"
+                          >
+                            <ChevronDown size={16} />
+                          </button>
+                          <span className="font-mono text-lg text-white font-bold">{set.maxReps}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { maxReps: set.maxReps + 1 })}
+                            className="text-concrete hover:text-white p-1 transition-colors"
+                          >
+                            <ChevronUp size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="font-mono text-[9px] text-concrete uppercase tracking-widest block mb-2 text-center">Descanso (s)</label>
+                        <div className="flex items-center justify-between border-b border-concrete/30 py-1 select-none">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { restSeconds: Math.max(0, set.restSeconds - 5) })}
+                            className="text-concrete hover:text-white p-1 transition-colors"
+                          >
+                            <ChevronDown size={16} />
+                          </button>
+                          <span className="font-mono text-lg text-white font-bold">{set.restSeconds}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { restSeconds: set.restSeconds + 5 })}
+                            className="text-concrete hover:text-white p-1 transition-colors"
+                          >
+                            <ChevronUp size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dynamic Advanced Methods Selector */}
+                    <div className="flex flex-col gap-3 mt-2 border-t border-concrete/10 pt-4">
+                      <span className="font-mono text-[9px] text-concrete uppercase tracking-widest block">Método Avançado</span>
+                      
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { id: "normal", label: "Normal", color: "border-concrete/30 hover:border-white text-white" },
+                          { id: "drop-set", label: "Drop-set", color: "border-purple-500/50 hover:border-purple-500 text-purple-400 bg-purple-950/20" },
+                          { id: "failure", label: "Falha", color: "border-red-500/50 hover:border-red-500 text-red-400 bg-red-950/20" },
+                          { id: "rest-pause", label: "Rest-Pause", color: "border-blue-500/50 hover:border-blue-500 text-blue-400 bg-blue-950/20" },
+                          { id: "warmup", label: "Aquec.", color: "border-yellow-500/50 hover:border-yellow-500 text-yellow-400 bg-yellow-950/20" },
+                          { id: "custom", label: "Outro (+)", color: "border-concrete/30 hover:border-vulcanico text-vulcanico" }
+                        ].map((btn) => {
+                          const currentType = set.methodType || (set.isDropSet ? "drop-set" : set.isToFailure ? "failure" : "normal");
+                          const isSelected = currentType === btn.id;
+                          
+                          return (
+                            <button
+                              key={btn.id}
+                              type="button"
+                              onClick={() => {
+                                handleUpdateSetConfig && handleUpdateSetConfig(set.id, {
+                                  methodType: btn.id,
+                                  isDropSet: btn.id === "drop-set",
+                                  isToFailure: btn.id === "failure",
+                                  ...(btn.id === "drop-set" ? { dropCount: set.dropCount || 1 } : {}),
+                                  ...(btn.id === "rest-pause" ? {
+                                    restPauseSets: set.restPauseSets !== undefined ? set.restPauseSets : 3,
+                                    restPauseSeconds: set.restPauseSeconds !== undefined ? set.restPauseSeconds : 15
+                                  } : {}),
+                                  ...(btn.id === "failure" ? { failureType: set.failureType || "concentrica" } : {}),
+                                  ...(btn.id === "custom" ? { customMethodName: set.customMethodName || "Cluster" } : {})
+                                });
+                              }}
+                              className={`font-mono text-[10px] uppercase px-3 py-1.5 border transition-all rounded-lg ${
+                                isSelected 
+                                  ? "bg-vulcanico border-vulcanico text-noturno font-bold" 
+                                  : btn.color
+                              }`}
+                            >
+                              {btn.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Method Details Config */}
+                      {(() => {
+                        const type = set.methodType || (set.isDropSet ? "drop-set" : set.isToFailure ? "failure" : "normal");
+                        
+                        if (type === "drop-set") {
+                          const drops = set.dropCount || 1;
+                          return (
+                            <div className="flex items-center gap-4 bg-purple-950/10 p-3 border border-purple-500/20 mt-1 rounded-xl">
+                              <span className="font-mono text-[10px] text-purple-300 uppercase">Qtd de Drops:</span>
+                              <div className="flex items-center gap-4 border-b border-purple-500/30 py-0.5 select-none">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { dropCount: Math.max(1, drops - 1) })}
+                                  className="text-purple-400 hover:text-white p-0.5"
+                                >
+                                  <ChevronDown size={14} />
+                                </button>
+                                <span className="font-mono text-sm text-purple-300 font-bold">{drops}x drops</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { dropCount: drops + 1 })}
+                                  className="text-purple-400 hover:text-white p-0.5"
+                                >
+                                  <ChevronUp size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (type === "failure") {
+                          const failure = set.failureType || "concentrica";
+                          return (
+                            <div className="flex flex-col gap-2 bg-red-950/10 p-3 border border-red-500/20 mt-1 rounded-xl">
+                              <span className="font-mono text-[10px] text-red-300 uppercase">Tipo de Falha:</span>
+                              <div className="flex gap-2">
+                                {[
+                                  { id: "concentrica", label: "Concêntrica" },
+                                  { id: "excentrica", label: "Excêntrica" },
+                                  { id: "isometrica", label: "Isométrica" }
+                                ].map((f) => (
+                                  <button
+                                    key={f.id}
+                                    type="button"
+                                    onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { failureType: f.id })}
+                                    className={`font-mono text-[9px] uppercase px-2 py-1 border border-red-500/30 hover:border-red-400 rounded-lg ${
+                                      failure === f.id ? "bg-red-950 text-red-400 border-red-500 font-bold" : "text-concrete"
+                                    }`}
+                                  >
+                                    {f.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (type === "rest-pause") {
+                          const rpSets = set.restPauseSets || 3;
+                          const rpSecs = set.restPauseSeconds || 15;
+                          return (
+                            <div className="grid grid-cols-2 gap-4 bg-blue-950/10 p-3 border border-blue-500/20 mt-1 rounded-xl">
+                              <div>
+                                <span className="font-mono text-[10px] text-blue-300 uppercase block mb-1">Mini-Séries:</span>
+                                <div className="flex items-center justify-between border-b border-blue-500/30 py-0.5 select-none">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { restPauseSets: Math.max(1, rpSets - 1) })}
+                                    className="text-blue-400 hover:text-white p-0.5"
+                                  >
+                                    <ChevronDown size={14} />
+                                  </button>
+                                  <span className="font-mono text-xs text-blue-300 font-bold">{rpSets}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { restPauseSets: rpSets + 1 })}
+                                    className="text-blue-400 hover:text-white p-0.5"
+                                  >
+                                    <ChevronUp size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                              <div>
+                                <span className="font-mono text-[10px] text-blue-300 uppercase block mb-1">Mini-Descanso:</span>
+                                <div className="flex items-center justify-between border-b border-blue-500/30 py-0.5 select-none">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { restPauseSeconds: Math.max(5, rpSecs - 5) })}
+                                    className="text-blue-400 hover:text-white p-0.5"
+                                  >
+                                    <ChevronDown size={14} />
+                                  </button>
+                                  <span className="font-mono text-xs text-blue-300 font-bold">{rpSecs}s</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { restPauseSeconds: rpSecs + 5 })}
+                                    className="text-blue-400 hover:text-white p-0.5"
+                                  >
+                                    <ChevronUp size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (type === "custom") {
+                          const name = set.customMethodName || "";
+                          return (
+                            <div className="flex flex-col gap-1.5 bg-concrete/5 p-3 border border-concrete/20 mt-1 rounded-xl">
+                              <label className="font-mono text-[10px] text-concrete uppercase">Nome do Método Customizado:</label>
+                              <input
+                                type="text"
+                                value={name}
+                                onChange={(e) => handleUpdateSetConfig && handleUpdateSetConfig(set.id, { customMethodName: e.target.value })}
+                                placeholder="EX: CLUSTER SET"
+                                className="bg-transparent border-b border-concrete/30 py-1 font-mono text-xs text-white focus:outline-none focus:border-vulcanico uppercase"
+                              />
+                            </div>
+                          );
+                        }
+
+                        return null;
+                      })()}
+                    </div>
+                  </div>
+                ))}
+
+                <button 
+                  onClick={handleAddSetToConfig}
+                  className="mt-2 border border-dashed border-concrete/30 hover:border-vulcanico text-concrete hover:text-white py-3 font-mono text-xs uppercase flex items-center justify-center gap-2 transition-colors rounded-xl"
+                >
+                  <Plus size={14} /> Adicionar Série
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
