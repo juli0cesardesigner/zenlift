@@ -9,7 +9,7 @@ export function PlanEditorView(props: any) {
   const [quickMuscle, setQuickMuscle] = useState("Peito");
 
   const {
-    editingPlan, editingWorkoutId, setEditingWorkoutId, handleMoveWorkout, handleRemoveExerciseFromWorkout, handleOpenAddExerciseToWorkout, handleAddWorkoutToBuilder, addingExerciseToWorkoutId, setAddingExerciseToWorkoutId, exerciseSearchQuery, setExerciseSearchQuery, filteredExercises, filteredExercisesByMuscle, handleAddExerciseToWorkout, handleCreateAndAddExerciseInline, configuringExercise, setConfiguringExercise, exerciseMap, handleSaveExerciseConfig, handleApplySetConfigToAll, handleRemoveSetFromConfig, handleUpdateSetConfig, handleAddSetToConfig, handleToggleConjugate, handleSavePlan, setEditingPlan, plans, peIdx, exerciseMapByName, handleUpdateWorkoutNameInBuilder, setConfirmConfig, handleRemoveWorkoutFromBuilder
+    editingPlan, editingWorkoutId, setEditingWorkoutId, handleMoveWorkout, handleMoveExerciseInWorkout, handleRemoveExerciseFromWorkout, handleOpenAddExerciseToWorkout, handleAddWorkoutToBuilder, addingExerciseToWorkoutId, setAddingExerciseToWorkoutId, exerciseSearchQuery, setExerciseSearchQuery, filteredExercises, filteredExercisesByMuscle, handleAddExerciseToWorkout, handleCreateAndAddExerciseInline, configuringExercise, setConfiguringExercise, exerciseMap, handleSaveExerciseConfig, handleApplySetConfigToAll, handleRemoveSetFromConfig, handleUpdateSetConfig, handleAddSetToConfig, handleToggleConjugate, handleSavePlan, setEditingPlan, plans, peIdx, exerciseMapByName, handleUpdateWorkoutNameInBuilder, setConfirmConfig, handleRemoveWorkoutFromBuilder
   } = props;
 
   return (
@@ -105,37 +105,60 @@ export function PlanEditorView(props: any) {
                                     : ""
                                 }`}
                               >
-                                <div>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-display uppercase text-white text-lg">
-                                      {exDef?.name || "Desconhecido"}
-                                    </span>
-                                    {pe.supersetGroupId && (
-                                      <span className="font-mono text-[8px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1 py-0.5 rounded font-bold uppercase tracking-wider">
-                                        Conjugado
-                                      </span>
-                                    )}
+                                <div className="flex items-center gap-2">
+                                  {/* Up / Down Exercise Reorder Buttons */}
+                                  <div className="flex flex-col gap-0.5 shrink-0 pr-1 border-r border-concrete/15">
+                                    <button
+                                      type="button"
+                                      disabled={peIdx === 0}
+                                      onClick={() => handleMoveExerciseInWorkout && handleMoveExerciseInWorkout(editingWorkout.id, pe.id, 'up')}
+                                      className="p-1 text-concrete hover:text-vulcanico disabled:opacity-20 disabled:hover:text-concrete transition-colors"
+                                      title="Mover para cima"
+                                    >
+                                      <ChevronUp size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={peIdx === editingWorkout.exercises.length - 1}
+                                      onClick={() => handleMoveExerciseInWorkout && handleMoveExerciseInWorkout(editingWorkout.id, pe.id, 'down')}
+                                      className="p-1 text-concrete hover:text-vulcanico disabled:opacity-20 disabled:hover:text-concrete transition-colors"
+                                      title="Mover para baixo"
+                                    >
+                                      <ChevronDown size={14} />
+                                    </button>
                                   </div>
-                                  <div className="font-mono text-[9px] text-concrete uppercase mt-0.5">
-                                    {pe.sets.length} séries • Meta: {
-                                      pe.sets.map((s) => {
-                                        let methodTag = "";
-                                        const type = s.methodType || (s.isDropSet ? "drop-set" : s.isToFailure ? "failure" : "normal");
-                                        if (type === "drop-set") {
-                                          methodTag = ` [D${s.dropCount && s.dropCount > 1 ? `x${s.dropCount}` : ""}]`;
-                                        } else if (type === "failure") {
-                                          methodTag = ` [F]`;
-                                        } else if (type === "rest-pause") {
-                                          methodTag = ` [RP]`;
-                                        } else if (type === "warmup") {
-                                          methodTag = ` [W]`;
-                                        } else if (type === "custom") {
-                                          methodTag = ` [${(s.customMethodName || "CST").substring(0,3)}]`;
-                                        }
-                                        const repsCount = s.reps ?? s.minReps ?? 10;
-                                        return `${repsCount}r${methodTag}`;
-                                      }).join(" / ")
-                                    }
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-display uppercase text-white text-lg">
+                                        {exDef?.name || "Desconhecido"}
+                                      </span>
+                                      {pe.supersetGroupId && (
+                                        <span className="font-mono text-[8px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1 py-0.5 rounded font-bold uppercase tracking-wider">
+                                          Conjugado
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="font-mono text-[9px] text-concrete uppercase mt-0.5">
+                                      {pe.sets.length} séries • Meta: {
+                                        pe.sets.map((s) => {
+                                          let methodTag = "";
+                                          const type = s.methodType || (s.isDropSet ? "drop-set" : s.isToFailure ? "failure" : "normal");
+                                          if (type === "drop-set") {
+                                            methodTag = ` [D${s.dropCount && s.dropCount > 1 ? `x${s.dropCount}` : ""}]`;
+                                          } else if (type === "failure") {
+                                            methodTag = ` [F]`;
+                                          } else if (type === "rest-pause") {
+                                            methodTag = ` [RP]`;
+                                          } else if (type === "warmup") {
+                                            methodTag = ` [W]`;
+                                          } else if (type === "custom") {
+                                            methodTag = ` [${(s.customMethodName || "CST").substring(0,3)}]`;
+                                          }
+                                          const repsCount = s.reps ?? s.minReps ?? 10;
+                                          return exDef?.isTimeBased ? `${repsCount}s${methodTag}` : `${repsCount}r${methodTag}`;
+                                        }).join(" / ")
+                                      }
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-3">
@@ -467,7 +490,14 @@ export function PlanEditorView(props: any) {
                   {/* Config Inputs */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="font-mono text-xs text-concrete uppercase tracking-widest block mb-2 text-center">Repetições</label>
+                      <label className="font-mono text-xs text-concrete uppercase tracking-widest block mb-2 text-center">
+                        {(() => {
+                          const def = exerciseMap[configuringExercise.exercise.exerciseId] || (exerciseMapByName && exerciseMapByName[configuringExercise.exercise.exerciseId]);
+                          if (def?.isTimeBased) return "Tempo (segundos)";
+                          if (def?.isRepsOnly) return "Repetições (Apenas Reps)";
+                          return "Repetições";
+                        })()}
+                      </label>
                       <div className="flex items-center justify-between border-b border-concrete/30 py-1 select-none">
                         <button
                           type="button"

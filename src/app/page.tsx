@@ -1732,7 +1732,34 @@ export default function AppContainer() {
     });
   };
 
-const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
+  const handleMoveExerciseInWorkout = (workoutId: string, exerciseId: string, direction: 'up' | 'down') => {
+    if (!editingPlan) return;
+    const wIdx = editingPlan.workouts.findIndex(w => w.id === workoutId);
+    if (wIdx === -1) return;
+
+    const targetWorkout = editingPlan.workouts[wIdx];
+    const exIdx = targetWorkout.exercises.findIndex(pe => pe.id === exerciseId);
+    if (exIdx === -1) return;
+
+    const targetExIdx = direction === 'up' ? exIdx - 1 : exIdx + 1;
+    if (targetExIdx < 0 || targetExIdx >= targetWorkout.exercises.length) return;
+
+    const newExercises = [...targetWorkout.exercises];
+    const [moved] = newExercises.splice(exIdx, 1);
+    newExercises.splice(targetExIdx, 0, moved);
+
+    const updatedWorkout = {
+      ...targetWorkout,
+      exercises: newExercises
+    };
+
+    setEditingPlan({
+      ...editingPlan,
+      workouts: editingPlan.workouts.map((w, idx) => idx === wIdx ? updatedWorkout : w)
+    });
+  };
+
+  const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
     if (!editingPlan) return;
     setEditingPlan({
       ...editingPlan,
@@ -3126,10 +3153,10 @@ const handleRemoveWorkoutFromBuilder = (workoutId: string) => {
       {editingPlan && (
         <>
           <div className="block lg:hidden absolute inset-0 z-50 bg-noturno flex-col overflow-hidden">
-            <PlanEditorView editingPlan={editingPlan} editingWorkoutId={editingWorkoutId} setEditingWorkoutId={setEditingWorkoutId} handleMoveWorkout={handleMoveWorkout} handleRemoveExerciseFromWorkout={handleRemoveExerciseFromWorkout} handleOpenAddExerciseToWorkout={handleOpenAddExerciseToWorkout} handleAddWorkoutToBuilder={handleAddWorkoutToBuilder} addingExerciseToWorkoutId={addingExerciseToWorkoutId} setAddingExerciseToWorkoutId={setAddingExerciseToWorkoutId} exerciseSearchQuery={exerciseSearchQuery} setExerciseSearchQuery={setExerciseSearchQuery} filteredExercises={filteredExercises} filteredExercisesByMuscle={filteredExercisesByMuscle} handleAddExerciseToWorkout={handleAddExerciseToWorkout} handleCreateAndAddExerciseInline={handleCreateAndAddExerciseInline} configuringExercise={configuringExercise} setConfiguringExercise={setConfiguringExercise} exerciseMap={exerciseMap} handleSaveExerciseConfig={handleSaveExerciseConfig} handleApplySetConfigToAll={handleApplySetConfigToAll} handleRemoveSetFromConfig={handleRemoveSetFromConfig} handleUpdateSetConfig={handleUpdateSetConfig} handleAddSetToConfig={handleAddSetToConfig} handleToggleConjugate={handleToggleConjugate} handleSavePlan={handleSavePlan} setEditingPlan={setEditingPlan} plans={plans} exerciseMapByName={exerciseMapByName}  handleUpdateWorkoutNameInBuilder={handleUpdateWorkoutNameInBuilder} setConfirmConfig={setConfirmConfig} handleRemoveWorkoutFromBuilder={handleRemoveWorkoutFromBuilder} />
+            <PlanEditorView editingPlan={editingPlan} editingWorkoutId={editingWorkoutId} setEditingWorkoutId={setEditingWorkoutId} handleMoveWorkout={handleMoveWorkout} handleMoveExerciseInWorkout={handleMoveExerciseInWorkout} handleRemoveExerciseFromWorkout={handleRemoveExerciseFromWorkout} handleOpenAddExerciseToWorkout={handleOpenAddExerciseToWorkout} handleAddWorkoutToBuilder={handleAddWorkoutToBuilder} addingExerciseToWorkoutId={addingExerciseToWorkoutId} setAddingExerciseToWorkoutId={setAddingExerciseToWorkoutId} exerciseSearchQuery={exerciseSearchQuery} setExerciseSearchQuery={setExerciseSearchQuery} filteredExercises={filteredExercises} filteredExercisesByMuscle={filteredExercisesByMuscle} handleAddExerciseToWorkout={handleAddExerciseToWorkout} handleCreateAndAddExerciseInline={handleCreateAndAddExerciseInline} configuringExercise={configuringExercise} setConfiguringExercise={setConfiguringExercise} exerciseMap={exerciseMap} handleSaveExerciseConfig={handleSaveExerciseConfig} handleApplySetConfigToAll={handleApplySetConfigToAll} handleRemoveSetFromConfig={handleRemoveSetFromConfig} handleUpdateSetConfig={handleUpdateSetConfig} handleAddSetToConfig={handleAddSetToConfig} handleToggleConjugate={handleToggleConjugate} handleSavePlan={handleSavePlan} setEditingPlan={setEditingPlan} plans={plans} exerciseMapByName={exerciseMapByName}  handleUpdateWorkoutNameInBuilder={handleUpdateWorkoutNameInBuilder} setConfirmConfig={setConfirmConfig} handleRemoveWorkoutFromBuilder={handleRemoveWorkoutFromBuilder} />
           </div>
           <div className="hidden lg:flex absolute inset-0 z-50 bg-noturno flex-col overflow-hidden">
-            <DesktopPlanEditor editingPlan={editingPlan} editingWorkoutId={editingWorkoutId} setEditingWorkoutId={setEditingWorkoutId} handleMoveWorkout={handleMoveWorkout} handleRemoveExerciseFromWorkout={handleRemoveExerciseFromWorkout} handleOpenAddExerciseToWorkout={handleOpenAddExerciseToWorkout} handleAddWorkoutToBuilder={handleAddWorkoutToBuilder} addingExerciseToWorkoutId={addingExerciseToWorkoutId} setAddingExerciseToWorkoutId={setAddingExerciseToWorkoutId} exerciseSearchQuery={exerciseSearchQuery} setExerciseSearchQuery={setExerciseSearchQuery} filteredExercises={filteredExercises} filteredExercisesByMuscle={filteredExercisesByMuscle} handleAddExerciseToWorkout={handleAddExerciseToWorkout} handleCreateAndAddExerciseInline={handleCreateAndAddExerciseInline} configuringExercise={configuringExercise} setConfiguringExercise={setConfiguringExercise} exerciseMap={exerciseMap} handleSaveExerciseConfig={handleSaveExerciseConfig} handleApplySetConfigToAll={handleApplySetConfigToAll} handleRemoveSetFromConfig={handleRemoveSetFromConfig} handleUpdateSetConfig={handleUpdateSetConfig} handleAddSetToConfig={handleAddSetToConfig} handleToggleConjugate={handleToggleConjugate} handleSavePlan={handleSavePlan} setEditingPlan={setEditingPlan} plans={plans} exerciseMapByName={exerciseMapByName} handleUpdateWorkoutNameInBuilder={handleUpdateWorkoutNameInBuilder} setConfirmConfig={setConfirmConfig} handleRemoveWorkoutFromBuilder={handleRemoveWorkoutFromBuilder} />
+            <DesktopPlanEditor editingPlan={editingPlan} editingWorkoutId={editingWorkoutId} setEditingWorkoutId={setEditingWorkoutId} handleMoveWorkout={handleMoveWorkout} handleMoveExerciseInWorkout={handleMoveExerciseInWorkout} handleRemoveExerciseFromWorkout={handleRemoveExerciseFromWorkout} handleOpenAddExerciseToWorkout={handleOpenAddExerciseToWorkout} handleAddWorkoutToBuilder={handleAddWorkoutToBuilder} addingExerciseToWorkoutId={addingExerciseToWorkoutId} setAddingExerciseToWorkoutId={setAddingExerciseToWorkoutId} exerciseSearchQuery={exerciseSearchQuery} setExerciseSearchQuery={setExerciseSearchQuery} filteredExercises={filteredExercises} filteredExercisesByMuscle={filteredExercisesByMuscle} handleAddExerciseToWorkout={handleAddExerciseToWorkout} handleCreateAndAddExerciseInline={handleCreateAndAddExerciseInline} configuringExercise={configuringExercise} setConfiguringExercise={setConfiguringExercise} exerciseMap={exerciseMap} handleSaveExerciseConfig={handleSaveExerciseConfig} handleApplySetConfigToAll={handleApplySetConfigToAll} handleRemoveSetFromConfig={handleRemoveSetFromConfig} handleUpdateSetConfig={handleUpdateSetConfig} handleAddSetToConfig={handleAddSetToConfig} handleToggleConjugate={handleToggleConjugate} handleSavePlan={handleSavePlan} setEditingPlan={setEditingPlan} plans={plans} exerciseMapByName={exerciseMapByName} handleUpdateWorkoutNameInBuilder={handleUpdateWorkoutNameInBuilder} setConfirmConfig={setConfirmConfig} handleRemoveWorkoutFromBuilder={handleRemoveWorkoutFromBuilder} />
           </div>
         </>
       )}

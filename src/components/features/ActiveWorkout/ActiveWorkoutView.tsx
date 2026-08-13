@@ -23,7 +23,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
           <div className="flex-none p-3.5 sm:p-5 glass-panel border-b border-white/10 z-10 flex flex-col gap-2">
             {/* Line 1: Workout Name on Left + Minimize & Cancel on Right */}
             <div className="flex justify-between items-center w-full">
-              <h2 className="font-display text-2xl uppercase text-white leading-none truncate">
+              <h2 className="font-display text-xl sm:text-2xl uppercase text-white leading-tight break-words whitespace-normal pr-2">
                 {activeWorkout.name}
               </h2>
               <div className="flex items-center gap-3 sm:gap-4 shrink-0">
@@ -239,7 +239,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                         <div className="flex flex-col gap-2 mb-3">
                           {/* Line 1: Exercise Name Full Width */}
                           <div className="flex justify-between items-center w-full">
-                            <h3 className="font-display text-2xl uppercase text-vulcanico leading-tight truncate">
+                            <h3 className="font-display text-xl sm:text-2xl uppercase text-vulcanico leading-tight break-words whitespace-normal flex-1 pr-2">
                               {exDef?.name || "Desconhecido"}
                             </h3>
                             {isExerciseCompleted && (
@@ -367,7 +367,9 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                             <div className="col-span-2">Série</div>
                             <div className="col-span-3">(Reps)</div>
                             {exDef?.isRepsOnly ? (
-                              <div className="col-span-5">Reps</div>
+                              <div className="col-span-5">Reps (Sem Carga)</div>
+                            ) : exDef?.isTimeBased ? (
+                              <div className="col-span-5">Tempo (s)</div>
                             ) : (
                               <>
                                 <div className="col-span-3">Carga (kg)</div>

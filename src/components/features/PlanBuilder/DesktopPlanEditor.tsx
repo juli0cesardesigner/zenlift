@@ -15,6 +15,7 @@ export function DesktopPlanEditor(props: any) {
     editingWorkoutId,
     setEditingWorkoutId,
     handleMoveWorkout,
+    handleMoveExerciseInWorkout,
     handleRemoveExerciseFromWorkout,
     handleAddWorkoutToBuilder,
     exerciseSearchQuery,
@@ -363,6 +364,27 @@ export function DesktopPlanEditor(props: any) {
                           <div className="bg-black/40 p-4 border-b border-concrete/10 flex justify-between items-center cursor-context-menu" onContextMenu={(e) => handleContextMenu(e, ex)}>
                             <div className="flex items-center gap-4">
                               <span className="font-display text-2xl text-vulcanico w-8">{exIdx + 1}.</span>
+                              {/* Reorder Buttons (Up / Down) */}
+                              <div className="flex flex-col gap-0.5 shrink-0 border-r border-concrete/15 pr-2">
+                                <button
+                                  type="button"
+                                  disabled={exIdx === 0}
+                                  onClick={() => handleMoveExerciseInWorkout && handleMoveExerciseInWorkout(activeWorkout.id, ex.id, 'up')}
+                                  className="p-1 text-concrete hover:text-vulcanico disabled:opacity-20 disabled:hover:text-concrete transition-colors"
+                                  title="Mover Exercício para Cima"
+                                >
+                                  <ChevronUp size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={exIdx === activeWorkout.exercises.length - 1}
+                                  onClick={() => handleMoveExerciseInWorkout && handleMoveExerciseInWorkout(activeWorkout.id, ex.id, 'down')}
+                                  className="p-1 text-concrete hover:text-vulcanico disabled:opacity-20 disabled:hover:text-concrete transition-colors"
+                                  title="Mover Exercício para Baixo"
+                                >
+                                  <ChevronDown size={14} />
+                                </button>
+                              </div>
                               <div>
                                 <h4 className="font-display text-lg text-white uppercase">{exerciseTitle}</h4>
                                 <span className="font-mono text-[10px] text-concrete uppercase" style={{ color: muscleColors[muscleLabel] || "#8A99A8" }}>
@@ -407,7 +429,7 @@ export function DesktopPlanEditor(props: any) {
                             {/* Table Headers */}
                             <div className="grid grid-cols-12 gap-4 px-4 pb-2 border-b border-concrete/10 font-mono text-[10px] text-concrete uppercase tracking-widest font-bold">
                                <div className="col-span-2">Série</div>
-                               <div className="col-span-5">Repetições</div>
+                               <div className="col-span-5">{def?.isTimeBased ? "Tempo (segundos)" : def?.isRepsOnly ? "Repetições (Apenas Reps)" : "Repetições"}</div>
                                <div className="col-span-4">Descanso (s)</div>
                                <div className="col-span-1 text-center"></div>
                             </div>
@@ -676,7 +698,14 @@ export function DesktopPlanEditor(props: any) {
                     {/* Config Inputs */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="font-mono text-xs text-concrete uppercase tracking-widest block mb-2 text-center">Repetições</label>
+                        <label className="font-mono text-xs text-concrete uppercase tracking-widest block mb-2 text-center">
+                          {(() => {
+                            const def = exerciseMap[configuringExercise.exercise.exerciseId] || (exerciseMapByName && exerciseMapByName[configuringExercise.exercise.exerciseId]);
+                            if (def?.isTimeBased) return "Tempo (segundos)";
+                            if (def?.isRepsOnly) return "Repetições (Apenas Reps)";
+                            return "Repetições";
+                          })()}
+                        </label>
                         <div className="flex items-center justify-between border-b border-concrete/30 py-1 select-none">
                           <button
                             type="button"
