@@ -273,6 +273,20 @@ export async function deleteFeedback(id: string): Promise<void> {
 export function formatAsGitHubIssue(feedback: AppFeedback): string {
   const typeConfig = FEEDBACK_TYPE_LABELS[feedback.type];
   const priorityConfig = FEEDBACK_PRIORITY_LABELS[feedback.priority];
+  const codeLoc = feedback.targetElement?.codeLocation;
+
+  let codeSection = '';
+  if (codeLoc?.fileName || codeLoc?.componentName) {
+    codeSection = `
+---
+
+#### 🔬 Localização Cirúrgica no Código
+- **Arquivo de Origem:** \`${codeLoc.fileName || 'N/A'}${codeLoc.lineNumber ? `:${codeLoc.lineNumber}` : ''}\`
+- **Componente Principal:** \`<${codeLoc.componentName || feedback.targetElement?.parentComponent || 'Componente'} />\`
+${codeLoc.componentStack && codeLoc.componentStack.length > 0 ? `- **Hierarquia:** \`${codeLoc.componentStack.join(' > ')}\`` : ''}
+${codeLoc.propsSnippet ? `- **Props Vinculadas:** \`${JSON.stringify(codeLoc.propsSnippet)}\`` : ''}
+`;
+  }
 
   return `### ${typeConfig.icon} [${typeConfig.label.toUpperCase()}] ${feedback.title}
 
@@ -285,12 +299,15 @@ export function formatAsGitHubIssue(feedback: AppFeedback): string {
 
 #### 📝 Descrição / Ajuste Solicitado
 ${feedback.description || '_Sem descrição adicional fornecida._'}
-
+${codeSection}
 ---
 
 #### 🎯 Elemento Alvo
 - **Tag:** \`<${feedback.targetElement?.tagName?.toLowerCase() || 'div'}>\`
-- **Texto / Conteúdo:** \`${feedback.targetElement?.textSnippet || 'N/A'}\`
+- **Identificação / Texto:** \`${feedback.targetElement?.textSnippet || 'N/A'}\`
+${feedback.targetElement?.iconName ? `- **Ícone Detectado:** \`${feedback.targetElement.iconName}\`` : ''}
+${feedback.targetElement?.closestContainerTitle ? `- **Contexto Semântico:** \`${feedback.targetElement.closestContainerTitle}\`` : ''}
+${feedback.targetElement?.domPath ? `- **Caminho DOM:** \`${feedback.targetElement.domPath}\`` : ''}
 - **Posição na Tela:** \`X: ${feedback.targetElement?.xPercentage?.toFixed(1) || 0}%, Y: ${feedback.targetElement?.yPercentage?.toFixed(1) || 0}%\`
 
 #### 📱 Informações do Ambiente

@@ -296,18 +296,63 @@ export function DevFeedbackDrawer({
                     )}
                   </div>
 
-                  {/* Detalhes do Elemento Alvo */}
+                  {/* Detalhes Cirúrgicos do Elemento & Código */}
                   {fb.targetElement && (
-                    <div className="p-2.5 bg-black/30 border border-white/5 rounded-xl text-xs space-y-1">
+                    <div className="p-3 bg-black/40 border border-white/5 rounded-xl text-xs space-y-2">
+                      {/* Linha 1: Arquivo e Linha com botão de cópia */}
+                      {fb.targetElement.codeLocation?.fileName && (
+                        <div className="flex items-center justify-between gap-2 p-1.5 bg-cyan-950/30 border border-cyan-800/30 rounded-lg text-cyan-300 font-mono text-[11px]">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <FileCode className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                            <span className="truncate">{fb.targetElement.codeLocation.fileName}</span>
+                            {fb.targetElement.codeLocation.lineNumber && (
+                              <span className="text-vulcanico font-bold">
+                                :{fb.targetElement.codeLocation.lineNumber}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => {
+                              const path = `${fb.targetElement?.codeLocation?.fileName}${fb.targetElement?.codeLocation?.lineNumber ? `:${fb.targetElement?.codeLocation?.lineNumber}` : ""}`;
+                              navigator.clipboard.writeText(path);
+                              setCopiedId(`path_${fb.id}`);
+                              setTimeout(() => setCopiedId(null), 2000);
+                            }}
+                            className="px-1.5 py-0.5 bg-cyan-900/50 hover:bg-cyan-800/60 rounded text-[10px] text-cyan-200 shrink-0 cursor-pointer"
+                            title="Copiar arquivo e linha"
+                          >
+                            {copiedId === `path_${fb.id}` ? "Copiado!" : "Copiar"}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Linha 2: Componente React */}
+                      {fb.targetElement.codeLocation?.componentName && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-concrete font-mono">
+                          <span className="text-white/60">Componente:</span>
+                          <span className="font-bold text-cyan-300">
+                            &lt;{fb.targetElement.codeLocation.componentName} /&gt;
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Linha 3: Tag / Ícone / Texto */}
                       <div className="flex items-center justify-between text-concrete font-mono text-[11px]">
                         <span>Alvo: &lt;{fb.targetElement.tagName.toLowerCase()}&gt;</span>
-                        <span>
-                          Pos: ({fb.targetElement.xPercentage.toFixed(1)}%, {fb.targetElement.yPercentage.toFixed(1)}%)
-                        </span>
+                        {fb.targetElement.iconName && (
+                          <span className="text-amber-400 font-bold">Ícone: {fb.targetElement.iconName}</span>
+                        )}
                       </div>
-                      {fb.targetElement.textSnippet && (
-                        <p className="font-mono text-white/80 truncate text-[11px]">
+
+                      {fb.targetElement.textSnippet && fb.targetElement.textSnippet !== "(Elemento sem texto visível)" && (
+                        <p className="font-mono text-white/80 truncate text-[11px] bg-black/30 p-1.5 rounded border border-white/5">
                           "{fb.targetElement.textSnippet}"
+                        </p>
+                      )}
+
+                      {fb.targetElement.closestContainerTitle && (
+                        <p className="text-[10px] text-concrete/80 truncate">
+                          Contexto: {fb.targetElement.closestContainerTitle}
                         </p>
                       )}
                     </div>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { TargetElementInfo, FeedbackType, FeedbackPriority } from "../../types/feedback";
 import { FEEDBACK_TYPE_LABELS, FEEDBACK_PRIORITY_LABELS, createFeedback } from "../../lib/feedbackService";
-import { X, Send, Tag, AlertTriangle, Sparkles } from "lucide-react";
+import { X, Send, Tag, Code2, Copy, Check, FileCode, Layers, Sparkles } from "lucide-react";
 
 interface FeedbackModalProps {
   isOpen: boolean;
@@ -25,12 +25,27 @@ export function FeedbackModal({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [copiedFile, setCopiedFile] = useState(false);
 
   if (!isOpen) return null;
 
-  const defaultTitle = targetElement?.textSnippet 
-    ? `${FEEDBACK_TYPE_LABELS[type].label}: "${targetElement.textSnippet.slice(0, 35)}..."`
-    : `${FEEDBACK_TYPE_LABELS[type].label} no componente`;
+  const codeLoc = targetElement?.codeLocation;
+  const compPrefix = codeLoc?.componentName ? `[${codeLoc.componentName}] ` : "";
+  const targetLabel = targetElement?.iconName
+    ? `Ícone <${targetElement.iconName}>`
+    : targetElement?.textSnippet && targetElement.textSnippet !== "(Elemento sem texto visível)"
+    ? `"${targetElement.textSnippet.slice(0, 30)}..."`
+    : `<${targetElement?.tagName.toLowerCase() || "componente"}>`;
+
+  const defaultTitle = `${compPrefix}${FEEDBACK_TYPE_LABELS[type].label}: ${targetLabel}`;
+
+  const handleCopyFilePath = () => {
+    if (!codeLoc?.fileName) return;
+    const pathWithLine = `${codeLoc.fileName}${codeLoc.lineNumber ? `:${codeLoc.lineNumber}` : ""}`;
+    navigator.clipboard.writeText(pathWithLine);
+    setCopiedFile(true);
+    setTimeout(() => setCopiedFile(false), 2000);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,13 +72,13 @@ export function FeedbackModal({
   };
 
   return (
-    <div 
-      data-dev-feedback-ui="true" 
-      className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+    <div
+      data-dev-feedback-ui="true"
+      className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
     >
-      <div 
-        onClick={(e) => e.stopPropagation()} 
-        className="w-full max-w-lg bg-noturno border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ring-1 ring-white/5"
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg bg-noturno border border-white/15 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] ring-1 ring-white/10"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-white/[0.02]">
@@ -72,8 +87,8 @@ export function FeedbackModal({
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-white tracking-tight">Novo Feedback Visual</h3>
-              <p className="text-xs text-concrete">Vincule anotações e bugs diretamente ao elemento selecionado</p>
+              <h3 className="font-bold text-base text-white tracking-tight">Novo Feedback Cirúrgico</h3>
+              <p className="text-xs text-concrete">Localização exata do código e elemento nos bastidores</p>
             </div>
           </div>
           <button
@@ -85,33 +100,93 @@ export function FeedbackModal({
         </div>
 
         {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5 custom-scrollbar">
-          {/* Elemento Alvo Detectado */}
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 custom-scrollbar">
+          {/* Card Cirúrgico de Origem do Código */}
           {targetElement && (
-            <div className="p-3.5 bg-white/[0.03] border border-white/10 rounded-xl space-y-1.5">
-              <div className="flex items-center justify-between text-xs text-concrete">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <Tag className="w-3.5 h-3.5 text-vulcanico" />
-                  Elemento Selecionado
+            <div className="p-3.5 bg-black/50 border border-cyan-500/30 rounded-xl space-y-2.5 shadow-inner">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 font-bold text-xs text-cyan-400">
+                  <Code2 className="w-4 h-4 text-cyan-400" />
+                  Origem no Código & Bastidores
                 </span>
-                <span className="font-mono text-[11px] bg-white/5 px-2 py-0.5 rounded text-concrete">
-                  &lt;{targetElement.tagName.toLowerCase()}&gt;
-                </span>
+                {codeLoc?.fileName && (
+                  <button
+                    type="button"
+                    onClick={handleCopyFilePath}
+                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/60 text-cyan-300 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Copiar caminho do arquivo"
+                  >
+                    {copiedFile ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedFile ? "Copiado!" : "Copiar Path"}</span>
+                  </button>
+                )}
               </div>
-              <p className="text-xs font-mono text-white/90 bg-black/30 p-2 rounded border border-white/5 truncate">
-                {targetElement.textSnippet || "(Elemento sem texto visível)"}
-              </p>
-              <div className="flex items-center gap-3 text-[11px] text-concrete font-mono">
-                <span>Posição X: {targetElement.xPercentage.toFixed(1)}%</span>
-                <span>•</span>
-                <span>Posição Y: {targetElement.yPercentage.toFixed(1)}%</span>
+
+              {/* Arquivo e Linha */}
+              {codeLoc?.fileName && (
+                <div className="flex items-center gap-2 text-xs font-mono bg-white/[0.03] p-2 rounded-lg border border-white/5">
+                  <FileCode className="w-3.5 h-3.5 text-vulcanico shrink-0" />
+                  <span className="text-white/90 truncate flex-1">{codeLoc.fileName}</span>
+                  {codeLoc.lineNumber && (
+                    <span className="bg-vulcanico/20 text-vulcanico px-1.5 py-0.5 rounded text-[10px] font-bold">
+                      Linha {codeLoc.lineNumber}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Componente React e Stack */}
+              <div className="space-y-1 text-xs">
+                {codeLoc?.componentName && (
+                  <div className="flex items-center gap-1.5 text-concrete">
+                    <span className="text-white/60">Componente:</span>
+                    <span className="font-mono font-bold text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-800/40">
+                      &lt;{codeLoc.componentName} /&gt;
+                    </span>
+                  </div>
+                )}
+
+                {codeLoc?.componentStack && codeLoc.componentStack.length > 1 && (
+                  <div className="flex items-center gap-1 text-[11px] text-concrete font-mono overflow-x-auto py-0.5">
+                    <Layers className="w-3 h-3 text-concrete shrink-0" />
+                    <span className="truncate">{codeLoc.componentStack.join(" → ")}</span>
+                  </div>
+                )}
               </div>
+
+              {/* Elemento / Ícone / Texto */}
+              <div className="p-2 bg-black/40 rounded-lg border border-white/5 space-y-1 text-xs">
+                <div className="flex items-center justify-between text-[11px] text-concrete font-mono">
+                  <span>Tag: &lt;{targetElement.tagName.toLowerCase()}&gt;</span>
+                  {targetElement.iconName && (
+                    <span className="text-amber-400 font-bold">Ícone: {targetElement.iconName}</span>
+                  )}
+                </div>
+                {targetElement.textSnippet && targetElement.textSnippet !== "(Elemento sem texto visível)" && (
+                  <p className="font-mono text-white/90 truncate text-[11px]">
+                    "{targetElement.textSnippet}"
+                  </p>
+                )}
+                {targetElement.closestContainerTitle && (
+                  <p className="text-[10px] text-concrete/80 truncate">
+                    Contexto: {targetElement.closestContainerTitle}
+                  </p>
+                )}
+              </div>
+
+              {/* Props vinculadas se houver */}
+              {codeLoc?.propsSnippet && (
+                <div className="text-[10px] font-mono text-concrete/80 bg-black/60 p-1.5 rounded border border-white/5 truncate">
+                  <span className="text-cyan-400 font-bold">Props: </span>
+                  {JSON.stringify(codeLoc.propsSnippet)}
+                </div>
+              )}
             </div>
           )}
 
           {/* Tipo de Feedback */}
           <div>
-            <label className="block text-xs font-semibold text-concrete uppercase tracking-wider mb-2">
+            <label className="block text-xs font-semibold text-concrete uppercase tracking-wider mb-1.5">
               Tipo do Apontamento
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -144,7 +219,7 @@ export function FeedbackModal({
 
           {/* Nível de Prioridade */}
           <div>
-            <label className="block text-xs font-semibold text-concrete uppercase tracking-wider mb-2">
+            <label className="block text-xs font-semibold text-concrete uppercase tracking-wider mb-1.5">
               Prioridade
             </label>
             <div className="grid grid-cols-4 gap-2">
@@ -174,35 +249,35 @@ export function FeedbackModal({
 
           {/* Título */}
           <div>
-            <label className="block text-xs font-semibold text-concrete uppercase tracking-wider mb-1.5">
-              Título / Assunto (Opcional)
+            <label className="block text-xs font-semibold text-concrete uppercase tracking-wider mb-1">
+              Título / Assunto
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={defaultTitle}
-              className="w-full px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-xl text-sm text-white placeholder-concrete/50 focus:outline-none focus:border-vulcanico transition-colors"
+              className="w-full px-3.5 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-concrete/50 focus:outline-none focus:border-vulcanico transition-colors"
             />
           </div>
 
           {/* Descrição */}
           <div>
-            <label className="block text-xs font-semibold text-concrete uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-concrete uppercase tracking-wider mb-1">
               Comentário / Detalhes do Ajuste *
             </label>
             <textarea
               required
-              rows={4}
+              rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ex: Este título está subindo para a borda ao rolar a página. Ajustar padding ou fixar altura do cabeçalho..."
-              className="w-full px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-xl text-sm text-white placeholder-concrete/50 focus:outline-none focus:border-vulcanico transition-colors custom-scrollbar resize-none"
+              placeholder="Ex: Este ícone deve abrir um modal de confirmação antes de excluir..."
+              className="w-full px-3.5 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-concrete/50 focus:outline-none focus:border-vulcanico transition-colors custom-scrollbar resize-none"
             />
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex items-center justify-end gap-3 pt-1">
             <button
               type="button"
               onClick={onClose}
@@ -213,7 +288,7 @@ export function FeedbackModal({
             <button
               type="submit"
               disabled={isSubmitting || !description.trim()}
-              className="px-5 py-2.5 text-xs font-bold bg-vulcanico text-noturno hover:bg-vulcanico/90 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-all shadow-lg shadow-vulcanico/25 flex items-center gap-2 cursor-pointer"
+              className="px-5 py-2 text-xs font-bold bg-vulcanico text-noturno hover:bg-vulcanico/90 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-all shadow-lg shadow-vulcanico/25 flex items-center gap-2 cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
               <span>{isSubmitting ? "Salvando..." : "Registrar Feedback"}</span>

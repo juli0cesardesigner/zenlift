@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { TargetElementInfo } from "../../types/feedback";
-import { X, Target, MousePointer } from "lucide-react";
+import { inspectElementSurgically } from "../../lib/reactSourceInspector";
+import { X, Target, MousePointer, Code2, Sparkles } from "lucide-react";
 
 interface FeedbackInspectorProps {
   isActive: boolean;
@@ -10,65 +11,24 @@ interface FeedbackInspectorProps {
   onSelectElement: (elementInfo: TargetElementInfo) => void;
 }
 
-interface HoveredBox {
+interface HoveredInfo {
   top: number;
   left: number;
   width: number;
   height: number;
-  tagName: string;
-  textSnippet: string;
+  badgeLabel: string;
+  subLabel?: string;
+  isComponent: boolean;
 }
 
 export function FeedbackInspector({ isActive, onCancel, onSelectElement }: FeedbackInspectorProps) {
-  const [hoveredBox, setHoveredBox] = useState<HoveredBox | null>(null);
+  const [hoveredInfo, setHoveredInfo] = useState<HoveredInfo | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Extrai informações ricas do elemento do DOM
-  const extractElementInfo = useCallback((element: HTMLElement, clientX: number, clientY: number): TargetElementInfo => {
-    const rect = element.getBoundingClientRect();
-    const scrollX = window.scrollX || window.pageXOffset || 0;
-    const scrollY = window.scrollY || window.pageYOffset || 0;
-
-    // Calcula porcentagem na tela (0 a 100%)
-    const screenW = window.innerWidth || 1;
-    const screenH = window.innerHeight || 1;
-    const xPercentage = Math.min(100, Math.max(0, (clientX / screenW) * 100));
-    const yPercentage = Math.min(100, Math.max(0, (clientY / screenH) * 100));
-
-    // Snippet do texto
-    const rawText = element.innerText || element.textContent || "";
-    const textSnippet = rawText.replace(/\s+/g, " ").trim().slice(0, 80);
-
-    // Seletor básico
-    let selector = element.tagName.toLowerCase();
-    if (element.id) {
-      selector += `#${element.id}`;
-    } else if (element.className && typeof element.className === 'string') {
-      const firstClass = element.className.split(' ').filter(c => c && !c.includes(':'))[0];
-      if (firstClass) selector += `.${firstClass}`;
-    }
-
-    return {
-      selector,
-      tagName: element.tagName,
-      textSnippet,
-      xPercentage,
-      yPercentage,
-      scrollX,
-      scrollY,
-      boundingRect: {
-        top: rect.top,
-        left: rect.left,
-        width: rect.width,
-        height: rect.height,
-      },
-    };
-  }, []);
 
   // Manipulação de eventos no modo de inspeção
   useEffect(() => {
     if (!isActive) {
-      setHoveredBox(null);
+      setHoveredInfo(null);
       return;
     }
 
@@ -82,21 +42,37 @@ export function FeedbackInspector({ isActive, onCancel, onSelectElement }: Feedb
       // Ignora elementos dentro do container de feedback de dev
       const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
       if (!target || target.closest('[data-dev-feedback-ui="true"]')) {
-        setHoveredBox(null);
+        setHoveredInfo(null);
         return;
       }
 
       const rect = target.getBoundingClientRect();
-      const rawText = target.innerText || target.textContent || "";
-      const textSnippet = rawText.replace(/\s+/g, " ").trim().slice(0, 45);
+      const inspected = inspectElementSurgically(target, e.clientX, e.clientY);
 
-      setHoveredBox({
+      // Constrói badge inteligente
+      let badgeLabel = `<${target.tagName.toLowerCase()}>`;
+      let subLabel = inspected.textSnippet !== "(Elemento sem texto visível)" ? inspected.textSnippet : undefined;
+      let isComponent = false;
+
+      if (inspected.codeLocation?.componentName) {
+        badgeLabel = `<${inspected.codeLocation.componentName} />`;
+        isComponent = true;
+        if (inspected.codeLocation.fileName) {
+          const shortFile = inspected.codeLocation.fileName.split("/").pop();
+          subLabel = `${shortFile}${inspected.codeLocation.lineNumber ? `:${inspected.codeLocation.lineNumber}` : ""}`;
+        }
+      } else if (inspected.iconName) {
+        badgeLabel = inspected.iconName;
+      }
+
+      setHoveredInfo({
         top: rect.top,
         left: rect.left,
         width: rect.width,
         height: rect.height,
-        tagName: target.tagName,
-        textSnippet,
+        badgeLabel,
+        subLabel,
+        isComponent,
       });
     };
 
@@ -109,7 +85,7 @@ export function FeedbackInspector({ isActive, onCancel, onSelectElement }: Feedb
       e.preventDefault();
       e.stopPropagation();
 
-      const elementInfo = extractElementInfo(target, e.clientX, e.clientY);
+      const elementInfo = inspectElementSurgically(target, e.clientX, e.clientY);
       onSelectElement(elementInfo);
     };
 
@@ -120,27 +96,33 @@ export function FeedbackInspector({ isActive, onCancel, onSelectElement }: Feedb
       if (!target || target.closest('[data-dev-feedback-ui="true"]')) return;
 
       const rect = target.getBoundingClientRect();
-      const rawText = target.innerText || target.textContent || "";
-      const textSnippet = rawText.replace(/\s+/g, " ").trim().slice(0, 45);
+      const inspected = inspectElementSurgically(target, touch.clientX, touch.clientY);
 
-      setHoveredBox({
+      let badgeLabel = `<${target.tagName.toLowerCase()}>`;
+      if (inspected.codeLocation?.componentName) {
+        badgeLabel = `<${inspected.codeLocation.componentName} />`;
+      } else if (inspected.iconName) {
+        badgeLabel = inspected.iconName;
+      }
+
+      setHoveredInfo({
         top: rect.top,
         left: rect.left,
         width: rect.width,
         height: rect.height,
-        tagName: target.tagName,
-        textSnippet,
+        badgeLabel,
+        subLabel: inspected.textSnippet,
+        isComponent: !!inspected.codeLocation?.componentName,
       });
 
-      // Permite toque rápido ou seguro
       if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = setTimeout(() => {
-        const elementInfo = extractElementInfo(target, touch.clientX, touch.clientY);
+        const elementInfo = inspectElementSurgically(target, touch.clientX, touch.clientY);
         onSelectElement(elementInfo);
-      }, 500);
+      }, 450);
     };
 
-    const handleTouchEnd = (e: TouchEvent) => {
+    const handleTouchEnd = () => {
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
       }
@@ -160,7 +142,7 @@ export function FeedbackInspector({ isActive, onCancel, onSelectElement }: Feedb
       window.removeEventListener("touchstart", handleTouchStart);
       window.removeEventListener("touchend", handleTouchEnd);
     };
-  }, [isActive, onCancel, onSelectElement, extractElementInfo]);
+  }, [isActive, onCancel, onSelectElement]);
 
   if (!isActive) return null;
 
@@ -170,11 +152,11 @@ export function FeedbackInspector({ isActive, onCancel, onSelectElement }: Feedb
       className="fixed inset-0 z-[99999] pointer-events-none select-none"
     >
       {/* Banner superior com instruções */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-auto flex items-center gap-3 px-4 py-2.5 bg-noturno/90 backdrop-blur-xl border border-vulcanico/40 rounded-full shadow-2xl shadow-vulcanico/20 animate-in fade-in slide-in-from-top-4 duration-200">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-auto flex items-center gap-3 px-4 py-2.5 bg-noturno/95 backdrop-blur-xl border border-vulcanico/50 rounded-full shadow-2xl shadow-vulcanico/25 animate-in fade-in slide-in-from-top-4 duration-200">
         <div className="w-2.5 h-2.5 rounded-full bg-vulcanico animate-ping" />
         <div className="flex items-center gap-2 text-xs md:text-sm font-semibold text-white">
           <Target className="w-4 h-4 text-vulcanico" />
-          <span>Modo Inspeção: Clique ou toque em qualquer título, botão ou elemento</span>
+          <span>Modo Cirúrgico Dev: Clique em qualquer ícone, título, card ou botão</span>
         </div>
         <button
           onClick={onCancel}
@@ -186,19 +168,31 @@ export function FeedbackInspector({ isActive, onCancel, onSelectElement }: Feedb
       </div>
 
       {/* Caixa de destaque sobre o elemento com hover */}
-      {hoveredBox && (
+      {hoveredInfo && (
         <div
           style={{
-            top: `${hoveredBox.top}px`,
-            left: `${hoveredBox.left}px`,
-            width: `${hoveredBox.width}px`,
-            height: `${hoveredBox.height}px`,
+            top: `${hoveredInfo.top}px`,
+            left: `${hoveredInfo.left}px`,
+            width: `${hoveredInfo.width}px`,
+            height: `${hoveredInfo.height}px`,
           }}
-          className="fixed transition-all duration-75 pointer-events-none rounded-lg border-2 border-vulcanico bg-vulcanico/10 shadow-[0_0_20px_rgba(255,65,3,0.35)] ring-4 ring-vulcanico/20"
+          className="fixed transition-all duration-75 pointer-events-none rounded-lg border-2 border-vulcanico bg-vulcanico/15 shadow-[0_0_24px_rgba(255,65,3,0.4)] ring-4 ring-vulcanico/25"
         >
-          <div className="absolute -top-7 left-0 px-2 py-0.5 bg-vulcanico text-noturno font-mono font-extrabold text-[11px] rounded shadow-md uppercase tracking-wider flex items-center gap-1">
-            <MousePointer className="w-3 h-3" />
-            <span>{hoveredBox.tagName}</span>
+          {/* Badge superior com nome do componente/código */}
+          <div className="absolute -top-8 left-0 flex items-center gap-1.5 px-2.5 py-1 bg-noturno/95 border border-vulcanico text-white font-mono font-bold text-[11px] rounded-lg shadow-xl uppercase tracking-wider backdrop-blur-md whitespace-nowrap z-50">
+            {hoveredInfo.isComponent ? (
+              <Code2 className="w-3 h-3 text-cyan-400" />
+            ) : (
+              <MousePointer className="w-3 h-3 text-vulcanico" />
+            )}
+            <span className={hoveredInfo.isComponent ? "text-cyan-300 font-extrabold" : "text-white"}>
+              {hoveredInfo.badgeLabel}
+            </span>
+            {hoveredInfo.subLabel && (
+              <span className="text-[10px] text-concrete font-normal max-w-[180px] truncate border-l border-white/20 pl-1.5 ml-0.5 lowercase">
+                {hoveredInfo.subLabel}
+              </span>
+            )}
           </div>
         </div>
       )}
