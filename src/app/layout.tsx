@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { DevFeedbackWidget } from "../components/feedback/DevFeedbackWidget";
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -46,6 +47,7 @@ export default function RootLayout({
         {/* Desktop wrapper constraint */}
         <div className="w-full min-h-[100dvh] relative overflow-hidden bg-noturno flex flex-col items-stretch">
           {children}
+          <DevFeedbackWidget />
         </div>
       </body>
     </html>
