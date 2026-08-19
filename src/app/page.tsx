@@ -38,7 +38,8 @@ import {
   AlertTriangle,
   Upload,
   Link,
-  Users
+  Users,
+  ArrowUpDown
 } from "lucide-react";
 import { supabase } from "./supabase";
 import { User as SupabaseUser } from "@supabase/supabase-js";
@@ -49,6 +50,7 @@ import { EXERCISE_FIELDS_LABEL_MAP, EXERCISE_VIEW_MODE_LABEL_MAP, STATS_PERIOD_L
 import { isValidVideoUrl, formatTime, formatRestTime, generateId } from '../lib/utils';
 import { ToggleSwitch } from '../components/ui/ToggleSwitch';
 import { CustomSelect } from '../components/ui/CustomSelect';
+import { AthleteInputDropdown } from '../components/ui/AthleteInputDropdown';
 export default function AppContainer() {
   const [activeTab, setActiveTab] = useState<Tab>("plans");
   const [exerciseViewMode, setExerciseViewMode] = useState<"muscle" | "alphabetical">("muscle");
@@ -176,6 +178,22 @@ export default function AppContainer() {
       return updated;
     });
   };
+
+  const allKnownPartners = useMemo(() => {
+    const set = new Set<string>();
+    partnerHistory.forEach(p => {
+      if (p && p.trim() && p !== "Atleta 1" && p !== "Atleta 2") set.add(p.trim());
+    });
+    history.forEach(log => {
+      if (log.partner1Name && log.partner1Name.trim() && log.partner1Name !== "Atleta 1" && log.partner1Name !== "Atleta 2") {
+        set.add(log.partner1Name.trim());
+      }
+      if (log.partner2Name && log.partner2Name.trim() && log.partner2Name !== "Atleta 1" && log.partner2Name !== "Atleta 2") {
+        set.add(log.partner2Name.trim());
+      }
+    });
+    return Array.from(set);
+  }, [partnerHistory, history]);
 
   useEffect(() => {
     setIsEditingDirectly(false);
@@ -2101,8 +2119,10 @@ export default function AppContainer() {
   // --- ACTIONS: ACTIVE WORKOUT ---
   const handleStartWorkout = (workout: WorkoutTemplate, planName: string) => {
     setSelectedSessionMode("solo");
-    setPartner1NameInput("Atleta 1");
-    setPartner2NameInput("Atleta 2");
+    const p1Default = partnerHistory[0] || "Atleta 1";
+    const p2Default = partnerHistory[1] || "Atleta 2";
+    setPartner1NameInput(p1Default);
+    setPartner2NameInput(p2Default);
     setStartingWorkoutModal({ workout, planName });
   };
 
@@ -3790,35 +3810,44 @@ export default function AppContainer() {
 
             {selectedSessionMode === "dual" && (
               <div className="flex flex-col gap-3 bg-black/40 p-4 rounded-xl border border-white/10 animate-fade-in">
-                <p className="font-mono text-[10px] text-cyan-400 uppercase font-bold">Nomes da Dupla:</p>
-                <datalist id="partner-history-list">
-                  {partnerHistory.map(p => (
-                    <option key={p} value={p} />
-                  ))}
-                </datalist>
-                <div className="flex flex-col gap-2">
-                  <div>
-                    <label className="font-mono text-[9px] text-concrete uppercase">Parceiro 1</label>
-                    <input
-                      type="text"
-                      list="partner-history-list"
-                      placeholder="Atleta 1"
-                      value={partner1NameInput}
-                      onChange={e => setPartner1NameInput(e.target.value)}
-                      className="w-full bg-noturno border border-concrete/30 rounded-lg px-3 py-1.5 font-mono text-xs text-white focus:outline-none focus:border-vulcanico"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-mono text-[9px] text-concrete uppercase">Parceiro 2</label>
-                    <input
-                      type="text"
-                      list="partner-history-list"
-                      placeholder="Atleta 2"
-                      value={partner2NameInput}
-                      onChange={e => setPartner2NameInput(e.target.value)}
-                      className="w-full bg-noturno border border-concrete/30 rounded-lg px-3 py-1.5 font-mono text-xs text-white focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
+                <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                  <p className="font-mono text-[10px] text-cyan-400 uppercase font-bold flex items-center gap-1.5">
+                    <Users size={12} />
+                    Configuração da Dupla
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const temp = partner1NameInput;
+                      setPartner1NameInput(partner2NameInput);
+                      setPartner2NameInput(temp);
+                    }}
+                    className="flex items-center gap-1 font-mono text-[9px] text-concrete hover:text-white bg-white/5 hover:bg-white/10 px-2 py-1 rounded transition-colors"
+                    title="Inverter Posições da Dupla"
+                  >
+                    <ArrowUpDown size={11} />
+                    Inverter
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <AthleteInputDropdown
+                    label="Parceiro 1 (P1)"
+                    value={partner1NameInput}
+                    onChange={setPartner1NameInput}
+                    options={allKnownPartners}
+                    placeholder="Nome do Atleta 1"
+                    accentColor="vulcanico"
+                  />
+
+                  <AthleteInputDropdown
+                    label="Parceiro 2 (P2)"
+                    value={partner2NameInput}
+                    onChange={setPartner2NameInput}
+                    options={allKnownPartners}
+                    placeholder="Nome do Atleta 2"
+                    accentColor="cyan"
+                  />
                 </div>
               </div>
             )}
