@@ -3219,7 +3219,23 @@ export default function AppContainer() {
                     <label className="font-mono text-concrete text-[10px] uppercase">Equipamento</label>
                     <ToggleSwitch checked={editingExercise.visibleFields?.includes('equipment') || false} onChange={(c) => toggleVisibleField('equipment', c)} />
                   </div>
-                  <input type="text" value={editingExercise.equipment || ""} onChange={(e) => setEditingExercise({...editingExercise, equipment: e.target.value})} placeholder="Ex: Halter" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                  <CustomSelect
+                    value={editingExercise.equipment || ""}
+                    onChange={(val) => setEditingExercise({...editingExercise, equipment: val})}
+                    options={[
+                      { label: "Halter", value: "Halter" },
+                      { label: "Barra", value: "Barra" },
+                      { label: "Máquina", value: "Máquina" },
+                      { label: "Polia / Cabo", value: "Polia / Cabo" },
+                      { label: "Barra Fixa", value: "Barra Fixa" },
+                      { label: "Peso Corporal", value: "Peso Corporal" },
+                      { label: "Smith", value: "Smith" },
+                      { label: "Kettlebell", value: "Kettlebell" },
+                      { label: "Elástico / Faixa", value: "Elástico / Faixa" },
+                    ]}
+                    placeholder="Selecione..."
+                    allowCustom={true}
+                  />
                 </div>
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center">
@@ -3245,14 +3261,41 @@ export default function AppContainer() {
                     <label className="font-mono text-concrete text-[10px] uppercase">Pegada</label>
                     <ToggleSwitch checked={editingExercise.visibleFields?.includes('gripType') || false} onChange={(c) => toggleVisibleField('gripType', c)} />
                   </div>
-                  <input type="text" value={editingExercise.gripType || ""} onChange={(e) => setEditingExercise({...editingExercise, gripType: e.target.value})} placeholder="Ex: Pronada" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                  <CustomSelect
+                    value={editingExercise.gripType || ""}
+                    onChange={(val) => setEditingExercise({...editingExercise, gripType: val})}
+                    options={[
+                      { label: "Pronada", value: "Pronada" },
+                      { label: "Supinada", value: "Supinada" },
+                      { label: "Neutra", value: "Neutra" },
+                      { label: "Mista", value: "Mista" },
+                      { label: "Aberta", value: "Aberta" },
+                      { label: "Fechada", value: "Fechada" },
+                    ]}
+                    placeholder="Selecione..."
+                    allowCustom={true}
+                  />
                 </div>
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center">
                     <label className="font-mono text-concrete text-[10px] uppercase">Postura</label>
                     <ToggleSwitch checked={editingExercise.visibleFields?.includes('stance') || false} onChange={(c) => toggleVisibleField('stance', c)} />
                   </div>
-                  <input type="text" value={editingExercise.stance || ""} onChange={(e) => setEditingExercise({...editingExercise, stance: e.target.value})} placeholder="Ex: Unilateral" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                  <CustomSelect
+                    value={editingExercise.stance || ""}
+                    onChange={(val) => setEditingExercise({...editingExercise, stance: val})}
+                    options={[
+                      { label: "Em Pé", value: "Em Pé" },
+                      { label: "Sentado", value: "Sentado" },
+                      { label: "Deitado (Reto)", value: "Deitado (Reto)" },
+                      { label: "Inclinado", value: "Inclinado" },
+                      { label: "Declinado", value: "Declinado" },
+                      { label: "Unilateral", value: "Unilateral" },
+                      { label: "Bilateral", value: "Bilateral" },
+                    ]}
+                    placeholder="Selecione..."
+                    allowCustom={true}
+                  />
                 </div>
               </div>
 
@@ -3261,7 +3304,20 @@ export default function AppContainer() {
                   <label className="font-mono text-concrete text-[10px] uppercase">Categoria</label>
                   <ToggleSwitch checked={editingExercise.visibleFields?.includes('exerciseCategory') || false} onChange={(c) => toggleVisibleField('exerciseCategory', c)} />
                 </div>
-                <input type="text" value={editingExercise.exerciseCategory || ""} onChange={(e) => setEditingExercise({...editingExercise, exerciseCategory: e.target.value})} placeholder="Ex: Hipertrofia, Cardio" className="w-full bg-transparent border-b border-concrete/30 py-2 font-display text-lg text-white focus:outline-none focus:border-vulcanico transition-colors" />
+                <CustomSelect
+                  value={editingExercise.exerciseCategory || ""}
+                  onChange={(val) => setEditingExercise({...editingExercise, exerciseCategory: val})}
+                  options={[
+                    { label: "Hipertrofia", value: "Hipertrofia" },
+                    { label: "Força", value: "Força" },
+                    { label: "Resistência", value: "Resistência" },
+                    { label: "Funcional", value: "Funcional" },
+                    { label: "Cardio", value: "Cardio" },
+                    { label: "Alongamento / Mobilidade", value: "Alongamento / Mobilidade" },
+                  ]}
+                  placeholder="Selecione..."
+                  allowCustom={true}
+                />
               </div>
 
               <div className="flex flex-col gap-1 mt-2">
