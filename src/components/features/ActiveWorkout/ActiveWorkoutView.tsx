@@ -160,12 +160,13 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                   const isInActiveSuperset = !!(activeEx && ae.supersetGroupId && ae.supersetGroupId === activeEx.supersetGroupId);
                   const distance = aeIdx - resolvedActiveExerciseIndex;
                   const isQueued = distance > 0 && !isInActiveSuperset;
-                  
-                  const isExerciseCompleted = ae.sets.every(s => s.completed);
+                  const isDual = activeWorkout.sessionMode === "dual";
+                  const isSetFullyDone = (s: any) => isDual ? (s.completed && s.completedP2) : s.completed;
+                  const isExerciseCompleted = ae.sets.every(s => isSetFullyDone(s));
                   const isGroupCompleted = ae.supersetGroupId
                     ? activeWorkout.exercises
                         .filter(ex => ex.supersetGroupId === ae.supersetGroupId)
-                        .every(ex => ex.sets.every(s => s.completed))
+                        .every(ex => ex.sets.every(s => isSetFullyDone(s)))
                     : isExerciseCompleted;
                   const isCollapsed = isGroupCompleted && !expandedCompletedExercises[ae.id];
 
@@ -357,10 +358,10 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                           <div className="grid grid-cols-12 font-mono text-[10px] uppercase mb-2 text-center font-bold px-0.5">
                             <div className="col-span-2 text-concrete">Série</div>
                             <div className="col-span-5 text-vulcanico font-extrabold truncate px-1">
-                              {activeWorkout.partner1Name || "Atleta 1"}
+                              {activeWorkout.partner1Name || "Atleta 1"} {exDef?.isRepsOnly ? "(Reps)" : exDef?.isTimeBased ? "(Tempo)" : "(kg × reps)"}
                             </div>
                             <div className="col-span-5 text-cyan-400 font-extrabold truncate px-1">
-                              {activeWorkout.partner2Name || "Atleta 2"}
+                              {activeWorkout.partner2Name || "Atleta 2"} {exDef?.isRepsOnly ? "(Reps)" : exDef?.isTimeBased ? "(Tempo)" : "(kg × reps)"}
                             </div>
                           </div>
                         ) : (
@@ -439,45 +440,72 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                       set.completed ? "bg-vulcanico/20 border-vulcanico/50 shadow-[0_0_10px_rgba(255,65,3,0.15)]" : "bg-black/30 border-white/10"
                                     }`}>
                                       <div className="flex items-center justify-center gap-1 font-mono text-xs flex-1">
-                                        <button
-                                          onClick={() => {
-                                            if (!set.completed) {
-                                              setActiveInputModal({
-                                                exerciseId: ae.id,
-                                                setId: set.id,
-                                                field: "weight",
-                                                partner: "p1",
-                                                initialValue: set.weight,
-                                                suggestedValue: set.suggestedWeight || ""
-                                              });
-                                              setModalTempValue(set.weight || set.suggestedWeight || "0");
-                                            }
-                                          }}
-                                          disabled={set.completed}
-                                          className={`px-1.5 py-1 rounded border transition-colors ${!set.weight && set.suggestedWeight ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
-                                        >
-                                          {set.weight || set.suggestedWeight || "0"}<span className="text-[9px] text-concrete font-normal ml-0.5">kg</span>
-                                        </button>
-                                        <span className="text-concrete text-[10px] px-0.5">×</span>
-                                        <button
-                                          onClick={() => {
-                                            if (!set.completed) {
-                                              setActiveInputModal({
-                                                exerciseId: ae.id,
-                                                setId: set.id,
-                                                field: "reps",
-                                                partner: "p1",
-                                                initialValue: set.reps,
-                                                suggestedValue: set.suggestedReps || ""
-                                              });
-                                              setModalTempValue(set.reps || set.suggestedReps || "0");
-                                            }
-                                          }}
-                                          disabled={set.completed}
-                                          className={`px-1.5 py-1 rounded border transition-colors ${!set.reps && set.suggestedReps ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
-                                        >
-                                          {set.reps || set.suggestedReps || "0"}
-                                        </button>
+                                        {exDef?.isRepsOnly ? (
+                                          <button
+                                            onClick={() => {
+                                              if (!set.completed) {
+                                                setActiveInputModal({
+                                                  exerciseId: ae.id,
+                                                  setId: set.id,
+                                                  field: "reps",
+                                                  partner: "p1",
+                                                  initialValue: set.reps,
+                                                  suggestedValue: set.suggestedReps || ""
+                                                });
+                                                setModalTempValue(set.reps || set.suggestedReps || "0");
+                                              }
+                                            }}
+                                            disabled={set.completed}
+                                            className={`px-2.5 py-1 rounded border transition-colors flex items-center gap-1 ${!set.reps && set.suggestedReps ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
+                                          >
+                                            <span>{set.reps || set.suggestedReps || "0"}</span>
+                                            <span className="text-[9px] text-concrete font-normal">reps</span>
+                                          </button>
+                                        ) : exDef?.isTimeBased ? (
+                                          <span className="text-xs font-mono text-vulcanico font-bold">{set.reps || "Tempo"}</span>
+                                        ) : (
+                                          <>
+                                            <button
+                                              onClick={() => {
+                                                if (!set.completed) {
+                                                  setActiveInputModal({
+                                                    exerciseId: ae.id,
+                                                    setId: set.id,
+                                                    field: "weight",
+                                                    partner: "p1",
+                                                    initialValue: set.weight,
+                                                    suggestedValue: set.suggestedWeight || ""
+                                                  });
+                                                  setModalTempValue(set.weight || set.suggestedWeight || "0");
+                                                }
+                                              }}
+                                              disabled={set.completed}
+                                              className={`px-1.5 py-1 rounded border transition-colors ${!set.weight && set.suggestedWeight ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
+                                            >
+                                              {set.weight || set.suggestedWeight || "0"}<span className="text-[9px] text-concrete font-normal ml-0.5">kg</span>
+                                            </button>
+                                            <span className="text-concrete text-[10px] px-0.5">×</span>
+                                            <button
+                                              onClick={() => {
+                                                if (!set.completed) {
+                                                  setActiveInputModal({
+                                                    exerciseId: ae.id,
+                                                    setId: set.id,
+                                                    field: "reps",
+                                                    partner: "p1",
+                                                    initialValue: set.reps,
+                                                    suggestedValue: set.suggestedReps || ""
+                                                  });
+                                                  setModalTempValue(set.reps || set.suggestedReps || "0");
+                                                }
+                                              }}
+                                              disabled={set.completed}
+                                              className={`px-1.5 py-1 rounded border transition-colors ${!set.reps && set.suggestedReps ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
+                                            >
+                                              {set.reps || set.suggestedReps || "0"}
+                                            </button>
+                                          </>
+                                        )}
                                       </div>
                                       <button
                                          onClick={() => {
@@ -498,45 +526,72 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                                       set.completedP2 ? "bg-cyan-950/40 border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.15)]" : "bg-black/30 border-white/10"
                                     }`}>
                                       <div className="flex items-center justify-center gap-1 font-mono text-xs flex-1">
-                                        <button
-                                          onClick={() => {
-                                            if (!set.completedP2) {
-                                              setActiveInputModal({
-                                                exerciseId: ae.id,
-                                                setId: set.id,
-                                                field: "weight",
-                                                partner: "p2",
-                                                initialValue: set.weightP2 || "",
-                                                suggestedValue: set.suggestedWeightP2 || ""
-                                              });
-                                              setModalTempValue(set.weightP2 || set.suggestedWeightP2 || "0");
-                                            }
-                                          }}
-                                          disabled={set.completedP2}
-                                          className={`px-1.5 py-1 rounded border transition-colors ${!set.weightP2 && set.suggestedWeightP2 ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
-                                        >
-                                          {set.weightP2 || set.suggestedWeightP2 || "0"}<span className="text-[9px] text-concrete font-normal ml-0.5">kg</span>
-                                        </button>
-                                        <span className="text-concrete text-[10px] px-0.5">×</span>
-                                        <button
-                                          onClick={() => {
-                                            if (!set.completedP2) {
-                                              setActiveInputModal({
-                                                exerciseId: ae.id,
-                                                setId: set.id,
-                                                field: "reps",
-                                                partner: "p2",
-                                                initialValue: set.repsP2 || "",
-                                                suggestedValue: set.suggestedRepsP2 || ""
-                                              });
-                                              setModalTempValue(set.repsP2 || set.suggestedRepsP2 || "0");
-                                            }
-                                          }}
-                                          disabled={set.completedP2}
-                                          className={`px-1.5 py-1 rounded border transition-colors ${!set.repsP2 && set.suggestedRepsP2 ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
-                                        >
-                                          {set.repsP2 || set.suggestedRepsP2 || "0"}
-                                        </button>
+                                        {exDef?.isRepsOnly ? (
+                                          <button
+                                            onClick={() => {
+                                              if (!set.completedP2) {
+                                                setActiveInputModal({
+                                                  exerciseId: ae.id,
+                                                  setId: set.id,
+                                                  field: "reps",
+                                                  partner: "p2",
+                                                  initialValue: set.repsP2 || "",
+                                                  suggestedValue: set.suggestedRepsP2 || ""
+                                                });
+                                                setModalTempValue(set.repsP2 || set.suggestedRepsP2 || "0");
+                                              }
+                                            }}
+                                            disabled={set.completedP2}
+                                            className={`px-2.5 py-1 rounded border transition-colors flex items-center gap-1 ${!set.repsP2 && set.suggestedRepsP2 ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
+                                          >
+                                            <span>{set.repsP2 || set.suggestedRepsP2 || "0"}</span>
+                                            <span className="text-[9px] text-concrete font-normal">reps</span>
+                                          </button>
+                                        ) : exDef?.isTimeBased ? (
+                                          <span className="text-xs font-mono text-cyan-400 font-bold">{set.repsP2 || "Tempo"}</span>
+                                        ) : (
+                                          <>
+                                            <button
+                                              onClick={() => {
+                                                if (!set.completedP2) {
+                                                  setActiveInputModal({
+                                                    exerciseId: ae.id,
+                                                    setId: set.id,
+                                                    field: "weight",
+                                                    partner: "p2",
+                                                    initialValue: set.weightP2 || "",
+                                                    suggestedValue: set.suggestedWeightP2 || ""
+                                                  });
+                                                  setModalTempValue(set.weightP2 || set.suggestedWeightP2 || "0");
+                                                }
+                                              }}
+                                              disabled={set.completedP2}
+                                              className={`px-1.5 py-1 rounded border transition-colors ${!set.weightP2 && set.suggestedWeightP2 ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
+                                            >
+                                              {set.weightP2 || set.suggestedWeightP2 || "0"}<span className="text-[9px] text-concrete font-normal ml-0.5">kg</span>
+                                            </button>
+                                            <span className="text-concrete text-[10px] px-0.5">×</span>
+                                            <button
+                                              onClick={() => {
+                                                if (!set.completedP2) {
+                                                  setActiveInputModal({
+                                                    exerciseId: ae.id,
+                                                    setId: set.id,
+                                                    field: "reps",
+                                                    partner: "p2",
+                                                    initialValue: set.repsP2 || "",
+                                                    suggestedValue: set.suggestedRepsP2 || ""
+                                                  });
+                                                  setModalTempValue(set.repsP2 || set.suggestedRepsP2 || "0");
+                                                }
+                                              }}
+                                              disabled={set.completedP2}
+                                              className={`px-1.5 py-1 rounded border transition-colors ${!set.repsP2 && set.suggestedRepsP2 ? 'text-concrete border-concrete/20' : 'text-white border-white/20 bg-white/5 font-bold'}`}
+                                            >
+                                              {set.repsP2 || set.suggestedRepsP2 || "0"}
+                                            </button>
+                                          </>
+                                        )}
                                       </div>
                                       <button
                                          onClick={() => {

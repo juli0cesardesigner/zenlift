@@ -92,7 +92,7 @@ export function PlanEditorView(props: any) {
                       ) : (
                         <div className="flex flex-col gap-4">
                           {editingWorkout.exercises.map((pe, peIdx) => {
-                            const exDef = exerciseMap[pe.exerciseId];
+                            const exDef = exerciseMap[pe.exerciseId] || (exerciseMapByName && exerciseMapByName[pe.exerciseId]);
                             const nextPe = editingWorkout.exercises[peIdx + 1];
                             const isGroupedWithNext = !!(pe.supersetGroupId && nextPe && pe.supersetGroupId === nextPe.supersetGroupId);
 
@@ -132,6 +132,16 @@ export function PlanEditorView(props: any) {
                                       <span className="font-display uppercase text-white text-lg">
                                         {exDef?.name || "Desconhecido"}
                                       </span>
+                                      {exDef?.isRepsOnly && (
+                                        <span className="font-mono text-[8px] bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-1 py-0.5 rounded font-bold uppercase tracking-wider">
+                                          Apenas Reps
+                                        </span>
+                                      )}
+                                      {exDef?.isTimeBased && (
+                                        <span className="font-mono text-[8px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-1 py-0.5 rounded font-bold uppercase tracking-wider">
+                                          Tempo
+                                        </span>
+                                      )}
                                       {pe.supersetGroupId && (
                                         <span className="font-mono text-[8px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1 py-0.5 rounded font-bold uppercase tracking-wider">
                                           Conjugado
