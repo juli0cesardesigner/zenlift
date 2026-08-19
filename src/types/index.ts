@@ -186,7 +186,7 @@ export interface ActiveWorkoutViewProps {
   formatTime: (ms: number) => string;
   handleEndWorkout?: () => void;
   handleAddExerciseToActiveWorkout: (exercise: any) => void;
-  handleUpdateActiveSet: (exerciseId: string, setId: string, field: any, val: any, partner?: "p1" | "p2") => void;
+  handleUpdateActiveSet: (exerciseId: string, setId: string, field: any, val: any, partner?: "p1" | "p2", propagateToFollowing?: boolean) => void;
   handleToggleActiveSet?: (exerciseId: string, setId: string, partner?: "p1" | "p2") => void;
   exerciseMap: Record<string, ExerciseDef>;
   plans: Plan[];

@@ -135,14 +135,62 @@ export default function AppContainer() {
     setIsEditingDirectly(false);
   }, [activeInputModal]);
 
-  const globalActiveSetId = useMemo(() => {
-    if (!activeWorkout) return null;
-    for (const ex of activeWorkout.exercises) {
-      const incompleteSet = ex.sets.find(s => !s.completed);
-      if (incompleteSet) return incompleteSet.id;
+  const activeWorkoutState = useMemo(() => {
+    if (!activeWorkout || !activeWorkout.exercises.length) {
+      return { activeExerciseIndex: -1, globalActiveSetId: null };
     }
-    return null;
+
+    const isDual = activeWorkout.sessionMode === "dual";
+    const isSetCompleted = (s: ActiveSet) => isDual ? (s.completed && s.completedP2) : s.completed;
+
+    let i = 0;
+    while (i < activeWorkout.exercises.length) {
+      const ex = activeWorkout.exercises[i];
+      if (ex.supersetGroupId) {
+        // Collect all contiguous exercises in this superset group
+        const groupExercises: { ex: ActiveExercise; originalIndex: number }[] = [];
+        let j = i;
+        while (j < activeWorkout.exercises.length && activeWorkout.exercises[j].supersetGroupId === ex.supersetGroupId) {
+          groupExercises.push({ ex: activeWorkout.exercises[j], originalIndex: j });
+          j++;
+        }
+
+        const maxSets = Math.max(...groupExercises.map(g => g.ex.sets.length), 0);
+
+        // Interleaved round-robin: Set 0 for each exercise in group, then Set 1, then Set 2...
+        for (let sIdx = 0; sIdx < maxSets; sIdx++) {
+          for (const g of groupExercises) {
+            const set = g.ex.sets[sIdx];
+            if (set && !isSetCompleted(set)) {
+              return {
+                activeExerciseIndex: g.originalIndex,
+                globalActiveSetId: set.id
+              };
+            }
+          }
+        }
+        i = j;
+      } else {
+        // Single exercise: process sets in sequence
+        for (const set of ex.sets) {
+          if (!isSetCompleted(set)) {
+            return {
+              activeExerciseIndex: i,
+              globalActiveSetId: set.id
+            };
+          }
+        }
+        i++;
+      }
+    }
+
+    return {
+      activeExerciseIndex: activeWorkout.exercises.length - 1,
+      globalActiveSetId: null
+    };
   }, [activeWorkout]);
+
+  const globalActiveSetId = activeWorkoutState.globalActiveSetId;
 
   // Rest Timer
   const [restTimer, setRestTimer] = useState<{
@@ -2133,10 +2181,10 @@ export default function AppContainer() {
             weightP2: "",
             repsP2: "",
             completedP2: false,
-            suggestedWeight: idx === 0 ? suggestedW : undefined,
-            suggestedReps: idx === 0 ? suggestedR : undefined,
-            suggestedWeightP2: idx === 0 ? (suggestedWP2 || suggestedW) : undefined,
-            suggestedRepsP2: idx === 0 ? (suggestedRP2 || suggestedR) : undefined,
+            suggestedWeight: suggestedW,
+            suggestedReps: suggestedR || (ps.maxReps ? ps.maxReps.toString() : ps.minReps ? ps.minReps.toString() : undefined),
+            suggestedWeightP2: suggestedWP2 || suggestedW,
+            suggestedRepsP2: suggestedRP2 || suggestedR || (ps.maxReps ? ps.maxReps.toString() : ps.minReps ? ps.minReps.toString() : undefined),
             methodType: ps.methodType,
             customMethodName: ps.customMethodName,
             dropCount: ps.dropCount,
@@ -2160,7 +2208,8 @@ export default function AppContainer() {
     setId: string,
     field: "weight" | "reps" | "completed",
     value: any,
-    partner: "p1" | "p2" = "p1"
+    partner: "p1" | "p2" = "p1",
+    propagateToFollowing: boolean = false
   ) => {
     if (!activeWorkout) return;
 
@@ -2209,79 +2258,117 @@ export default function AppContainer() {
         exercises: prev.exercises.map((ex, exIndex) => {
           if (ex.id !== exerciseId) return ex;
 
+          const currentSetIdx = ex.sets.findIndex(s => s.id === setId);
+
           const updatedSets = ex.sets.map((s, sIdx) => {
-            if (s.id !== setId) return s;
+            if (s.id === setId) {
+              // Check Superset Grouping
+              const groupExercises = prev.exercises.filter(e => e.supersetGroupId && e.supersetGroupId === ex.supersetGroupId);
+              const isSupersetGroup = groupExercises.length > 1;
+              const currentGroupIdx = isSupersetGroup ? groupExercises.findIndex(e => e.id === ex.id) : -1;
+              const isLastExerciseInSuperset = isSupersetGroup ? (currentGroupIdx === groupExercises.length - 1) : true;
 
-            // Check Superset Grouping
-            const groupExercises = prev.exercises.filter(e => e.supersetGroupId && e.supersetGroupId === ex.supersetGroupId);
-            const isSupersetGroup = groupExercises.length > 1;
-            const currentGroupIdx = isSupersetGroup ? groupExercises.findIndex(e => e.id === ex.id) : -1;
-            const isLastExerciseInSuperset = isSupersetGroup ? (currentGroupIdx === groupExercises.length - 1) : true;
-
-            if (justCompletedFully && s.restSeconds > 0 && !isLastSetOfWorkout && isLastExerciseInSuperset) {
-              const exDef = exerciseMap[ex.exerciseId];
-              const setIndex = sIdx + 1;
-              
-              let nextExName: string | undefined = undefined;
-              let nextExLastWeight: string | undefined = undefined;
-              
-              const isLastSetOfThisExercise = sIdx === ex.sets.length - 1;
-              if (isLastSetOfThisExercise) {
-                const nextEx = prev.exercises[exIndex + 1];
-                if (nextEx) {
-                  const nextExDef = exerciseMap[nextEx.exerciseId];
-                  nextExName = nextExDef?.name;
-                  
-                  for (let i = 0; i < history.length; i++) {
-                    const hLog = history[i];
-                    const hEx = hLog.exercises.find(h => h.name === nextExName);
-                    if (hEx && hEx.sets.length > 0) {
-                      let maxW = 0;
-                      hEx.sets.forEach(hs => {
-                        const w = parseFloat(hs.weight) || 0;
-                        if (w > maxW) maxW = w;
-                      });
-                      if (maxW > 0) nextExLastWeight = maxW.toString();
-                      break;
+              if (justCompletedFully && s.restSeconds > 0 && !isLastSetOfWorkout && isLastExerciseInSuperset) {
+                const exDef = exerciseMap[ex.exerciseId];
+                const setIndex = sIdx + 1;
+                
+                let nextExName: string | undefined = undefined;
+                let nextExLastWeight: string | undefined = undefined;
+                
+                const isLastSetOfThisExercise = sIdx === ex.sets.length - 1;
+                if (isLastSetOfThisExercise) {
+                  const nextEx = prev.exercises[exIndex + 1];
+                  if (nextEx) {
+                    const nextExDef = exerciseMap[nextEx.exerciseId];
+                    nextExName = nextExDef?.name;
+                    
+                    for (let i = 0; i < history.length; i++) {
+                      const hLog = history[i];
+                      const hEx = hLog.exercises.find(h => h.name === nextExName);
+                      if (hEx && hEx.sets.length > 0) {
+                        let maxW = 0;
+                        hEx.sets.forEach(hs => {
+                          const w = parseFloat(hs.weight) || 0;
+                          if (w > maxW) maxW = w;
+                        });
+                        if (maxW > 0) nextExLastWeight = maxW.toString();
+                        break;
+                      }
                     }
                   }
                 }
+
+                setRestTimer({
+                  duration: s.restSeconds,
+                  endTime: Date.now() + s.restSeconds * 1000,
+                  exerciseName: exDef?.name || "Exercício",
+                  setIndex,
+                  nextExerciseName: nextExName,
+                  nextExerciseLastWeight: nextExLastWeight,
+                  exerciseIndex: exIndex + 1,
+                  totalExercises: prev.exercises.length
+                });
               }
 
-              setRestTimer({
-                duration: s.restSeconds,
-                endTime: Date.now() + s.restSeconds * 1000,
-                exerciseName: exDef?.name || "Exercício",
-                setIndex,
-                nextExerciseName: nextExName,
-                nextExerciseLastWeight: nextExLastWeight,
-                exerciseIndex: exIndex + 1,
-                totalExercises: prev.exercises.length
-              });
+              return { ...s, [targetField]: value };
             }
 
-            return { ...s, [targetField]: value };
-          });
-
-          // Auto-propagate weight and reps to subsequent sets as placeholders if this is the first set and we just clicked "completed"
-          if (field === "completed" && value === true && updatedSets[0].id === setId) {
-            if (partner === "p1") {
-              const firstSetWeight = updatedSets[0].weight || updatedSets[0].suggestedWeight;
-              const firstSetReps = updatedSets[0].reps || updatedSets[0].suggestedReps;
-              for (let i = 1; i < updatedSets.length; i++) {
-                if (!updatedSets[i].completed) {
-                  if (!updatedSets[i].weight && !updatedSets[i].suggestedWeight && firstSetWeight) updatedSets[i].suggestedWeight = firstSetWeight;
-                  if (!updatedSets[i].reps && !updatedSets[i].suggestedReps && firstSetReps) updatedSets[i].suggestedReps = firstSetReps;
+            // Propagate changes to following incomplete sets if requested or when adjusting
+            if (sIdx > currentSetIdx && currentSetIdx !== -1) {
+              const isSetIncomplete = partner === "p2" ? !s.completedP2 : !s.completed;
+              if (isSetIncomplete) {
+                if (field === "weight") {
+                  if (partner === "p2") {
+                    return {
+                      ...s,
+                      suggestedWeightP2: value,
+                      ...(propagateToFollowing ? { weightP2: value } : {})
+                    };
+                  } else {
+                    return {
+                      ...s,
+                      suggestedWeight: value,
+                      ...(propagateToFollowing ? { weight: value } : {})
+                    };
+                  }
+                }
+                if (field === "reps") {
+                  if (partner === "p2") {
+                    return {
+                      ...s,
+                      suggestedRepsP2: value,
+                      ...(propagateToFollowing ? { repsP2: value } : {})
+                    };
+                  } else {
+                    return {
+                      ...s,
+                      suggestedReps: value,
+                      ...(propagateToFollowing ? { reps: value } : {})
+                    };
+                  }
                 }
               }
-            } else {
-              const firstSetWeight2 = updatedSets[0].weightP2 || updatedSets[0].suggestedWeightP2;
-              const firstSetReps2 = updatedSets[0].repsP2 || updatedSets[0].suggestedRepsP2;
-              for (let i = 1; i < updatedSets.length; i++) {
-                if (!updatedSets[i].completedP2) {
-                  if (!updatedSets[i].weightP2 && !updatedSets[i].suggestedWeightP2 && firstSetWeight2) updatedSets[i].suggestedWeightP2 = firstSetWeight2;
-                  if (!updatedSets[i].repsP2 && !updatedSets[i].suggestedRepsP2 && firstSetReps2) updatedSets[i].suggestedRepsP2 = firstSetReps2;
-                }
+            }
+
+            return s;
+          });
+
+          // Auto-propagate weight and reps to subsequent sets as placeholders when clicking "completed"
+          if (field === "completed" && value === true && currentSetIdx !== -1) {
+            const completedWeight = partner === "p2" 
+              ? (updatedSets[currentSetIdx]?.weightP2 || updatedSets[currentSetIdx]?.suggestedWeightP2) 
+              : (updatedSets[currentSetIdx]?.weight || updatedSets[currentSetIdx]?.suggestedWeight);
+            const completedReps = partner === "p2" 
+              ? (updatedSets[currentSetIdx]?.repsP2 || updatedSets[currentSetIdx]?.suggestedRepsP2) 
+              : (updatedSets[currentSetIdx]?.reps || updatedSets[currentSetIdx]?.suggestedReps);
+
+            for (let i = currentSetIdx + 1; i < updatedSets.length; i++) {
+              if (partner === "p1" && !updatedSets[i].completed) {
+                if (!updatedSets[i].weight && completedWeight) updatedSets[i].suggestedWeight = completedWeight;
+                if (!updatedSets[i].reps && completedReps) updatedSets[i].suggestedReps = completedReps;
+              } else if (partner === "p2" && !updatedSets[i].completedP2) {
+                if (!updatedSets[i].weightP2 && completedWeight) updatedSets[i].suggestedWeightP2 = completedWeight;
+                if (!updatedSets[i].repsP2 && completedReps) updatedSets[i].suggestedRepsP2 = completedReps;
               }
             }
           }
@@ -2343,9 +2430,16 @@ export default function AppContainer() {
             isDropSet: firstSet ? firstSet.isDropSet : false,
             isToFailure: firstSet ? firstSet.isToFailure : false,
             restSeconds: firstSet ? firstSet.restSeconds : 60,
-            weight: lastSet ? lastSet.weight : "",
-            reps: lastSet ? lastSet.reps : "",
+            weight: "",
+            reps: "",
             completed: false,
+            weightP2: "",
+            repsP2: "",
+            completedP2: false,
+            suggestedWeight: lastSet?.weight || lastSet?.suggestedWeight || firstSet?.suggestedWeight,
+            suggestedReps: lastSet?.reps || lastSet?.suggestedReps || firstSet?.suggestedReps,
+            suggestedWeightP2: lastSet?.weightP2 || lastSet?.suggestedWeightP2 || firstSet?.suggestedWeightP2,
+            suggestedRepsP2: lastSet?.repsP2 || lastSet?.suggestedRepsP2 || firstSet?.suggestedRepsP2,
             methodType: firstSet ? firstSet.methodType : undefined,
             customMethodName: firstSet ? firstSet.customMethodName : undefined,
             dropCount: firstSet ? firstSet.dropCount : undefined,
@@ -2378,8 +2472,38 @@ export default function AppContainer() {
   const [addingExerciseToActiveWorkout, setAddingExerciseToActiveWorkout] = useState(false);
   const [replacingActiveExerciseId, setReplacingActiveExerciseId] = useState<string | null>(null);
 
-  const handleReplaceExerciseInActiveWorkout = (newExerciseDef: ExerciseDef) => {
-    if (!activeWorkout || !replacingActiveExerciseId) return;
+  const handleReplaceExerciseInActiveWorkout = (arg1: any, arg2?: any) => {
+    let targetActiveExId = replacingActiveExerciseId;
+    let newDef: ExerciseDef | undefined;
+
+    if (typeof arg1 === 'string' && arg2) {
+      targetActiveExId = arg1;
+      newDef = typeof arg2 === 'string' ? (exercises.find(e => e.id === arg2) || exerciseMap[arg2]) : arg2;
+    } else if (typeof arg1 === 'string') {
+      newDef = exercises.find(e => e.id === arg1) || exerciseMap[arg1];
+    } else {
+      newDef = arg1;
+    }
+
+    if (!activeWorkout || !targetActiveExId || !newDef) return;
+
+    let suggestedW: string | undefined = undefined;
+    let suggestedR: string | undefined = undefined;
+    let suggestedWP2: string | undefined = undefined;
+    let suggestedRP2: string | undefined = undefined;
+
+    if (newDef) {
+      const p1Perf = getPartnerPerformance(newDef.name, activeWorkout.sessionMode === "dual" ? activeWorkout.partner1Name : undefined);
+      const p2Perf = getPartnerPerformance(newDef.name, activeWorkout.sessionMode === "dual" ? activeWorkout.partner2Name : undefined);
+      if (p1Perf.length > 0) {
+        suggestedW = p1Perf[0].weight.toString();
+        suggestedR = p1Perf[0].reps.toString();
+      }
+      if (p2Perf.length > 0) {
+        suggestedWP2 = p2Perf[0].weight.toString();
+        suggestedRP2 = p2Perf[0].reps.toString();
+      }
+    }
 
     setActiveWorkout(prev => {
       if (!prev) return null;
@@ -2387,19 +2511,26 @@ export default function AppContainer() {
         ...prev,
         lastInteractionTime: Date.now(),
         exercises: prev.exercises.map(ex => {
-          if (ex.id !== replacingActiveExerciseId) return ex;
+          if (ex.id !== targetActiveExId) return ex;
 
           // Reset set inputs but preserve targets and methods
           const updatedSets = ex.sets.map(s => ({
             ...s,
             completed: false,
+            completedP2: false,
             weight: "",
-            reps: ""
+            reps: "",
+            weightP2: "",
+            repsP2: "",
+            suggestedWeight: suggestedW,
+            suggestedReps: suggestedR || (s.maxReps ? s.maxReps.toString() : s.minReps ? s.minReps.toString() : undefined),
+            suggestedWeightP2: suggestedWP2 || suggestedW,
+            suggestedRepsP2: suggestedRP2 || suggestedR || (s.maxReps ? s.maxReps.toString() : s.minReps ? s.minReps.toString() : undefined)
           }));
 
           return {
             ...ex,
-            exerciseId: newExerciseDef.id,
+            exerciseId: newDef!.id,
             elapsedSeconds: 0,
             sets: updatedSets,
             overloadSuggestion: undefined
@@ -2420,6 +2551,24 @@ export default function AppContainer() {
 
     const exId = exerciseDef?.id || (typeof exerciseInput === 'string' ? exerciseInput : `ex_${generateId()}`);
 
+    let suggestedW: string | undefined = undefined;
+    let suggestedR: string | undefined = undefined;
+    let suggestedWP2: string | undefined = undefined;
+    let suggestedRP2: string | undefined = undefined;
+
+    if (exerciseDef) {
+      const p1Perf = getPartnerPerformance(exerciseDef.name, activeWorkout.sessionMode === "dual" ? activeWorkout.partner1Name : undefined);
+      const p2Perf = getPartnerPerformance(exerciseDef.name, activeWorkout.sessionMode === "dual" ? activeWorkout.partner2Name : undefined);
+      if (p1Perf.length > 0) {
+        suggestedW = p1Perf[0].weight.toString();
+        suggestedR = p1Perf[0].reps.toString();
+      }
+      if (p2Perf.length > 0) {
+        suggestedWP2 = p2Perf[0].weight.toString();
+        suggestedRP2 = p2Perf[0].reps.toString();
+      }
+    }
+
     const newActiveEx: ActiveExercise = {
       id: `ae_${generateId()}`,
       exerciseId: exId,
@@ -2434,7 +2583,14 @@ export default function AppContainer() {
           restSeconds: 60,
           weight: "",
           reps: "",
-          completed: false
+          completed: false,
+          weightP2: "",
+          repsP2: "",
+          completedP2: false,
+          suggestedWeight: suggestedW,
+          suggestedReps: suggestedR || "10",
+          suggestedWeightP2: suggestedWP2 || suggestedW,
+          suggestedRepsP2: suggestedRP2 || suggestedR || "10"
         }
       ]
     };
@@ -2879,9 +3035,7 @@ export default function AppContainer() {
     );
   }
 
-  const activeExerciseIndex = activeWorkout
-    ? activeWorkout.exercises.findIndex(ae => ae.sets.some(s => !s.completed))
-    : -1;
+  const activeExerciseIndex = activeWorkoutState.activeExerciseIndex;
   const resolvedActiveExerciseIndex = activeWorkout && activeExerciseIndex === -1
     ? activeWorkout.exercises.length - 1
     : activeExerciseIndex;

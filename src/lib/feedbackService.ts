@@ -142,11 +142,42 @@ export async function fetchAllFeedbacks(): Promise<AppFeedback[]> {
       // Mescla local e remoto por ID
       const map = new Map<string, AppFeedback>();
       remoteFeedbacks.forEach((f) => map.set(f.id, f));
+
+      const pendingSyncList: AppFeedback[] = [];
       localList.forEach((f) => {
         if (!map.has(f.id)) {
-          map.set(f.id, { ...f, syncStatus: 'local_only' });
+          const syncedItem = { ...f, syncStatus: 'synced' as const };
+          map.set(f.id, syncedItem);
+          pendingSyncList.push(syncedItem);
         }
       });
+
+      // Se existirem feedbacks locais que ainda não foram gravados no Supabase, sincroniza agora em lote
+      if (pendingSyncList.length > 0) {
+        supabase
+          .from('app_feedbacks')
+          .upsert(
+            pendingSyncList.map((f) => ({
+              id: f.id,
+              created_at: f.createdAt,
+              updated_at: f.updatedAt,
+              type: f.type,
+              priority: f.priority,
+              status: f.status,
+              title: f.title,
+              description: f.description,
+              route: f.route,
+              target_element: f.targetElement,
+              device_info: f.deviceInfo,
+              sync_status: 'synced',
+            }))
+          )
+          .then(({ error: upsertErr }) => {
+            if (upsertErr) {
+              console.warn('[FeedbackService] Erro ao sincronizar pendências locais com o Supabase:', upsertErr);
+            }
+          });
+      }
 
       const merged = Array.from(map.values()).sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()

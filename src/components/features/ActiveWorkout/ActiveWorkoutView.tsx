@@ -1,11 +1,12 @@
 import React, { useRef, useState } from 'react';
-import { ChevronRight, ArrowLeft, Save, Plus, Edit3, Check, Trash2, Clock, Dumbbell, Play, X, Settings, Info, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckSquare, Square, Zap, Users } from 'lucide-react';
+import { ChevronRight, ArrowLeft, Save, Plus, Edit3, Check, Trash2, Clock, Dumbbell, Play, X, Settings, Info, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckSquare, Square, Zap, Users, Copy } from 'lucide-react';
 import { ExerciseDef, ActiveWorkoutViewProps } from '../../../types';
 import { isValidVideoUrl, triggerHapticFeedback } from '../../../lib/utils';
 
 export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
   const blurMaskRef = useRef<HTMLDivElement>(null);
   const [maxDrag, setMaxDrag] = useState(0);
+  const [applyToFollowingSets, setApplyToFollowingSets] = useState(false);
   const {
     activeWorkout, isWorkoutMinimized, setIsWorkoutMinimized, formatTime, 
     handleEndWorkout, handleAddExerciseToActiveWorkout, handleUpdateActiveSet,
@@ -826,15 +827,17 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
               });
             };
 
-            const handleConfirm = () => {
+            const handleConfirm = (replicate: boolean = applyToFollowingSets) => {
               handleUpdateActiveSet(
                 activeInputModal.exerciseId,
                 activeInputModal.setId,
                 activeInputModal.field,
                 modalTempValue,
-                activeInputModal.partner || "p1"
+                activeInputModal.partner || "p1",
+                replicate
               );
               setActiveInputModal(null);
+              setApplyToFollowingSets(false);
             };
 
             return (
@@ -963,13 +966,42 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                     </>
                   )}
 
-                  {/* Confirm Button */}
-                  <button 
-                    onClick={handleConfirm}
-                    className="w-full bg-vulcanico text-noturno font-display uppercase tracking-widest py-4 rounded-xl text-xl mt-6 active:scale-95 transition-transform"
+                  {/* Quick Replicate Toggle */}
+                  <div 
+                    onClick={() => setApplyToFollowingSets(!applyToFollowingSets)}
+                    className={`flex items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer select-none mt-2 ${
+                      applyToFollowingSets 
+                        ? 'bg-vulcanico/15 border-vulcanico text-white shadow-[0_0_12px_rgba(255,65,3,0.2)]' 
+                        : 'bg-concrete/5 border-concrete/10 text-concrete hover:text-white'
+                    }`}
                   >
-                    Confirmar
-                  </button>
+                    <div className="flex items-center gap-2.5">
+                      <Copy size={16} className={applyToFollowingSets ? "text-vulcanico" : "text-concrete"} />
+                      <span className="font-mono text-xs">Copiar valor para as próximas séries</span>
+                    </div>
+                    <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${
+                      applyToFollowingSets ? 'bg-vulcanico border-vulcanico text-noturno' : 'border-concrete/30'
+                    }`}>
+                      {applyToFollowingSets && <Check size={14} strokeWidth={3} />}
+                    </div>
+                  </div>
+
+                  {/* Confirm & Clone Buttons */}
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    <button 
+                      onClick={() => handleConfirm(false)}
+                      className="w-full bg-concrete/10 hover:bg-concrete/20 text-white font-display uppercase tracking-wider py-4 rounded-xl text-lg active:scale-95 transition-all font-bold border border-white/10"
+                    >
+                      Confirmar
+                    </button>
+                    <button 
+                      onClick={() => handleConfirm(true)}
+                      className="w-full bg-vulcanico text-noturno font-display uppercase tracking-wider py-4 rounded-xl text-lg active:scale-95 transition-all font-bold flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,65,3,0.3)]"
+                    >
+                      <Copy size={18} strokeWidth={2.5} />
+                      <span>Em Todas</span>
+                    </button>
+                  </div>
 
                 </div>
               </div>
@@ -1102,7 +1134,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
                             key={ex.id}
                             onClick={() => {
                               if (replacingActiveExerciseId) {
-                                handleReplaceExerciseInActiveWorkout(replacingActiveExerciseId, ex.id);
+                                handleReplaceExerciseInActiveWorkout(replacingActiveExerciseId, ex);
                               } else {
                                 handleAddExerciseToActiveWorkout(ex);
                               }
