@@ -40,7 +40,7 @@ export function WorkoutShareModal({ workout, onClose }: WorkoutShareModalProps) 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in" data-component="WorkoutShareModal">
       <div className="bg-noturno border border-white/15 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
         {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-concrete/15">

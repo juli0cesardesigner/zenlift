@@ -156,7 +156,7 @@ export function DesktopPlanEditor(props: any) {
   };
 
   return (
-    <div className="w-full h-full bg-noturno flex flex-col z-50 overflow-hidden font-sans">
+    <div className="w-full h-full bg-noturno flex flex-col z-50 overflow-hidden font-sans" data-component="DesktopPlanEditor">
       
       {/* TOP HEADER */}
       <div className="flex-none h-20 border-b border-concrete/20 bg-noturno px-8 flex justify-between items-center z-10 shadow-lg">

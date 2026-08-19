@@ -1,4 +1,4 @@
-import { TargetElementInfo, CodeLocationInfo } from "../types/feedback";
+import { TargetElementInfo, CodeLocationInfo, DOMNodeLayer } from "../types/feedback";
 
 /**
  * Utilitário cirúrgico para inspecionar nós do DOM e extrair Fiber React,
@@ -55,6 +55,7 @@ function extractSafeProps(props: any): Record<string, string | number | boolean>
     "role",
     "aria-label",
     "data-testid",
+    "data-component",
   ];
 
   for (const key of Object.keys(props)) {
@@ -71,14 +72,12 @@ function extractSafeProps(props: any): Record<string, string | number | boolean>
 
 // Detecta ícones Lucide através de classes do SVG
 function detectLucideIcon(element: HTMLElement): string | null {
-  // Procura no próprio elemento ou dentro/próximo
   const svg = element.tagName.toLowerCase() === "svg" ? element : element.closest("svg") || element.querySelector("svg");
   if (svg) {
     const classList = Array.from(svg.classList);
     for (const cls of classList) {
       if (cls.startsWith("lucide-")) {
         const iconSlug = cls.replace("lucide-", "");
-        // Converte kebab-case para PascalCase (ex: trash-2 -> Trash2, chevron-right -> ChevronRight)
         const pascal = iconSlug
           .split("-")
           .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -93,18 +92,21 @@ function detectLucideIcon(element: HTMLElement): string | null {
 
 // Encontra o container semântico mais próximo
 function findClosestContext(element: HTMLElement): { title?: string; role?: string } {
-  // Tenta encontrar cabeçalho próximo
-  const section = element.closest("section, article, main, header, form, [role='dialog'], [data-card]");
+  const section = element.closest("section, article, main, header, form, [role='dialog'], [data-card], [data-component]");
   let title: string | undefined;
 
   if (section) {
-    const heading = section.querySelector("h1, h2, h3, h4, h5, h6");
-    if (heading && heading.textContent) {
-      title = heading.textContent.replace(/\s+/g, " ").trim().slice(0, 40);
+    const compName = section.getAttribute("data-component");
+    if (compName) {
+      title = `Componente: <${compName} />`;
+    } else {
+      const heading = section.querySelector("h1, h2, h3, h4, h5, h6");
+      if (heading && heading.textContent) {
+        title = heading.textContent.replace(/\s+/g, " ").trim().slice(0, 40);
+      }
     }
   }
 
-  // Se estiver dentro de um botão ou link
   const buttonOrLink = element.closest("button, a");
   if (buttonOrLink) {
     const btnLabel =
@@ -146,6 +148,78 @@ function getCssPath(el: HTMLElement): string {
 }
 
 /**
+ * Extrai camadas hierárquicas ancestrais para expansão no seletor de pin
+ */
+function extractHierarchyLayers(
+  element: HTMLElement,
+  screenW: number,
+  screenH: number
+): DOMNodeLayer[] {
+  const layers: DOMNodeLayer[] = [];
+  let current: HTMLElement | null = element;
+  let level = 0;
+
+  while (current && current !== document.body && current !== document.documentElement && level < 6) {
+    if (current.hasAttribute("data-dev-feedback-ui")) {
+      break;
+    }
+
+    const rect = current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const xPercentage = Math.min(100, Math.max(0, (centerX / screenW) * 100));
+    const yPercentage = Math.min(100, Math.max(0, (centerY / screenH) * 100));
+
+    let rawText = current.innerText || current.textContent || "";
+    rawText = rawText.replace(/\s+/g, " ").trim();
+    const textSnippet = rawText.slice(0, 45);
+
+    const compAttr = current.getAttribute("data-component") || current.closest("[data-component]")?.getAttribute("data-component");
+
+    let tagLabel = `<${current.tagName.toLowerCase()}>`;
+    if (current.id) {
+      tagLabel = `<${current.tagName.toLowerCase()} #${current.id}>`;
+    } else if (current.className && typeof current.className === "string") {
+      const firstCls = current.className.split(" ").filter((c) => c && !c.includes(":") && !c.startsWith("bg-") && !c.startsWith("text-"))[0];
+      if (firstCls) tagLabel = `<${current.tagName.toLowerCase()}.${firstCls}>`;
+    }
+
+    let fullLabel = tagLabel;
+    if (compAttr) {
+      fullLabel = `${tagLabel} [${compAttr}]`;
+    } else if (textSnippet && textSnippet.length < 20) {
+      fullLabel = `${tagLabel} "${textSnippet}"`;
+    }
+
+    let selector = current.tagName.toLowerCase();
+    if (current.id) selector += `#${current.id}`;
+
+    layers.push({
+      level,
+      tagName: current.tagName,
+      selector,
+      label: fullLabel,
+      textSnippet: textSnippet || "(Container)",
+      componentName: compAttr || undefined,
+      boundingRect: {
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      },
+      domPath: getCssPath(current),
+      xPercentage,
+      yPercentage,
+    });
+
+    current = current.parentElement;
+    level++;
+  }
+
+  return layers;
+}
+
+/**
  * Inspeciona profundamente o DOM e o Fiber React para extrair origem de código
  */
 export function inspectElementSurgically(
@@ -182,13 +256,22 @@ export function inspectElementSurgically(
   if (element.getAttribute("title")) attributes.title = element.getAttribute("title")!;
   if (element.getAttribute("role")) attributes.role = element.getAttribute("role")!;
   if (element.getAttribute("data-testid")) attributes["data-testid"] = element.getAttribute("data-testid")!;
+  if (element.getAttribute("data-component")) attributes["data-component"] = element.getAttribute("data-component")!;
+
+  // Extrai camadas ancestrais
+  const ancestors = extractHierarchyLayers(element, screenW, screenH);
 
   // Inspeção do React Fiber
   const codeLocation: CodeLocationInfo = {};
   const componentStack: string[] = [];
 
+  // Checa data-component explícito
+  const explicitComp = element.getAttribute("data-component") || element.closest("[data-component]")?.getAttribute("data-component");
+  if (explicitComp) {
+    componentStack.push(explicitComp);
+  }
+
   try {
-    // Procura chave do Fiber no elemento ou ancestrais
     let currEl: HTMLElement | null = element;
     let fiberNode: any = null;
 
@@ -210,7 +293,6 @@ export function inspectElementSurgically(
       while (curr && depth < 30) {
         const compName = getComponentName(curr.type);
 
-        // Se for um componente React com nome (não tag HTML padrão)
         if (compName && compName !== curr.type && typeof curr.type !== "string") {
           if (!componentStack.includes(compName) && !compName.startsWith("motion.")) {
             componentStack.push(compName);
@@ -224,14 +306,12 @@ export function inspectElementSurgically(
           codeLocation.columnNumber = curr._debugSource.columnNumber;
         }
 
-        // Tenta capturar do _debugOwner
         if (!codeLocation.fileName && curr._debugOwner?._debugSource) {
           codeLocation.fileName = cleanSourcePath(curr._debugOwner._debugSource.fileName);
           codeLocation.lineNumber = curr._debugOwner._debugSource.lineNumber;
           codeLocation.columnNumber = curr._debugOwner._debugSource.columnNumber;
         }
 
-        // Captura props do componente mais específico
         if (!codeLocation.propsSnippet && curr.memoizedProps) {
           const extracted = extractSafeProps(curr.memoizedProps);
           if (extracted) {
@@ -267,6 +347,7 @@ export function inspectElementSurgically(
     parentComponent: codeLocation.componentName || undefined,
     codeLocation,
     domPath,
+    ancestors,
     attributes: Object.keys(attributes).length > 0 ? attributes : undefined,
     xPercentage,
     yPercentage,

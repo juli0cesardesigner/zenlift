@@ -3763,7 +3763,7 @@ export default function AppContainer() {
 
       {/* STARTING WORKOUT MODE SELECTION MODAL (Solo vs Dual) */}
       {startingWorkoutModal && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in" data-component="StartWorkoutModal">
           <div className="bg-noturno border border-concrete/30 p-6 max-w-sm w-full flex flex-col gap-6 rounded-2xl relative shadow-2xl">
             <div className="flex justify-between items-center border-b border-concrete/10 pb-3">
               <h3 className="font-display text-xl uppercase text-white tracking-wider font-bold">

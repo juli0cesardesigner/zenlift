@@ -15,7 +15,7 @@ export function ExerciseLibraryView(props: any) {
   return (
     <>
         
-          <div className="p-6 flex flex-col min-h-full">
+          <div className="p-6 flex flex-col min-h-full" data-component="ExerciseLibraryView">
             <div className="flex justify-between items-center mb-8">
               <h1 className="font-sans font-extrabold text-3xl sm:text-4xl uppercase text-white tracking-tight leading-none">Biblioteca de Exercícios</h1>
               <div className="flex flex-col items-end gap-3">

@@ -19,7 +19,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
     <>
       {/* -------------------- ACTIVE WORKOUT OVERLAY -------------------- */}
 {activeWorkout && !isWorkoutMinimized && (
-        <div className="absolute inset-0 z-40 bg-noturno flex flex-col overflow-hidden">
+        <div className="absolute inset-0 z-40 bg-noturno flex flex-col overflow-hidden" data-component="ActiveWorkoutView">
           {/* Header */}
           <div className="flex-none p-3.5 sm:p-5 glass-panel border-b border-white/10 z-10 flex flex-col gap-2">
             {/* Line 1: Workout Name on Left + Minimize & Cancel on Right */}

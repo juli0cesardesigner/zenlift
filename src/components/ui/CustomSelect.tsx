@@ -78,7 +78,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   }
 
   return (
-    <div className="relative w-full" ref={containerRef}>
+    <div className="relative w-full" ref={containerRef} data-component="CustomSelect">
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}

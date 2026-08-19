@@ -19,7 +19,7 @@ export function HistoryView(props: any) {
   return (
     <>
         
-          <div className="p-6 flex flex-col min-h-full">
+          <div className="p-6 flex flex-col min-h-full" data-component="HistoryView">
             <div className="flex justify-between items-center mb-6">
               <h1 className="font-sans font-extrabold text-3xl uppercase text-white tracking-tight">Estatísticas</h1>
               {renderSyncButton()}

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { TargetElementInfo, FeedbackType, FeedbackPriority } from "../../types/feedback";
+import { useState, useEffect } from "react";
+import { TargetElementInfo, FeedbackType, FeedbackPriority, DOMNodeLayer } from "../../types/feedback";
 import { FEEDBACK_TYPE_LABELS, FEEDBACK_PRIORITY_LABELS, createFeedback } from "../../lib/feedbackService";
-import { X, Send, Tag, Code2, Copy, Check, FileCode, Layers, Sparkles } from "lucide-react";
+import { X, Send, Code2, Copy, Check, FileCode, Layers, Sparkles, ArrowUp, ArrowDown } from "lucide-react";
 
 interface FeedbackModalProps {
   isOpen: boolean;
@@ -15,11 +15,14 @@ interface FeedbackModalProps {
 
 export function FeedbackModal({
   isOpen,
-  targetElement,
+  targetElement: initialTarget,
   currentRoute = "/",
   onClose,
   onCreated,
 }: FeedbackModalProps) {
+  const [targetElement, setTargetElement] = useState<TargetElementInfo | null>(initialTarget);
+  const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
+
   const [type, setType] = useState<FeedbackType>("visual");
   const [priority, setPriority] = useState<FeedbackPriority>("medium");
   const [title, setTitle] = useState("");
@@ -27,7 +30,32 @@ export function FeedbackModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedFile, setCopiedFile] = useState(false);
 
+  useEffect(() => {
+    setTargetElement(initialTarget);
+    setSelectedLayerIndex(0);
+  }, [initialTarget]);
+
   if (!isOpen) return null;
+
+  const ancestors = initialTarget?.ancestors || [];
+
+  const handleSelectLayer = (layer: DOMNodeLayer, idx: number) => {
+    setSelectedLayerIndex(idx);
+    if (!initialTarget) return;
+
+    setTargetElement({
+      ...initialTarget,
+      tagName: layer.tagName,
+      selector: layer.selector,
+      textSnippet: layer.textSnippet,
+      closestContainerTitle: layer.label,
+      parentComponent: layer.componentName || initialTarget.parentComponent,
+      domPath: layer.domPath,
+      boundingRect: layer.boundingRect,
+      xPercentage: layer.xPercentage,
+      yPercentage: layer.yPercentage,
+    });
+  };
 
   const codeLoc = targetElement?.codeLocation;
   const compPrefix = codeLoc?.componentName ? `[${codeLoc.componentName}] ` : "";
@@ -88,7 +116,7 @@ export function FeedbackModal({
             </div>
             <div>
               <h3 className="font-bold text-base text-white tracking-tight">Novo Feedback Cirúrgico</h3>
-              <p className="text-xs text-concrete">Localização exata do código e elemento nos bastidores</p>
+              <p className="text-xs text-concrete">Seletor de camadas e localização no código</p>
             </div>
           </div>
           <button
@@ -101,6 +129,69 @@ export function FeedbackModal({
 
         {/* Content */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 custom-scrollbar">
+          {/* Seletor de Camadas Hierárquicas (Breadcrumbs) */}
+          {ancestors.length > 1 && (
+            <div className="p-3 bg-white/[0.03] border border-vulcanico/30 rounded-xl space-y-2 shadow-inner">
+              <div className="flex justify-between items-center">
+                <span className="flex items-center gap-1.5 font-bold text-xs text-vulcanico uppercase tracking-wider">
+                  <Layers className="w-3.5 h-3.5" />
+                  Camada Alvo do Pin (Escopo)
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={selectedLayerIndex >= ancestors.length - 1}
+                    onClick={() => {
+                      const nextIdx = Math.min(ancestors.length - 1, selectedLayerIndex + 1);
+                      handleSelectLayer(ancestors[nextIdx], nextIdx);
+                    }}
+                    className="px-2 py-1 rounded bg-white/5 hover:bg-white/15 disabled:opacity-25 text-[10px] font-mono text-white flex items-center gap-1 transition-colors border border-white/10"
+                    title="Expandir para o contêiner/card pai"
+                  >
+                    <ArrowUp size={11} />
+                    Expandir Pai
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedLayerIndex <= 0}
+                    onClick={() => {
+                      const prevIdx = Math.max(0, selectedLayerIndex - 1);
+                      handleSelectLayer(ancestors[prevIdx], prevIdx);
+                    }}
+                    className="px-2 py-1 rounded bg-white/5 hover:bg-white/15 disabled:opacity-25 text-[10px] font-mono text-white flex items-center gap-1 transition-colors border border-white/10"
+                    title="Focar no elemento mais interno"
+                  >
+                    <ArrowDown size={11} />
+                    Focar Filho
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {ancestors.map((layer, idx) => {
+                  const isSelected = selectedLayerIndex === idx;
+                  const icons = ["🎯", "📦", "🎴", "🖼️", "📐", "🌐"];
+                  const icon = icons[idx] || "📦";
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSelectLayer(layer, idx)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all flex items-center gap-1.5 border cursor-pointer ${
+                        isSelected
+                          ? "bg-vulcanico text-noturno border-vulcanico font-bold shadow-md shadow-vulcanico/30 scale-102"
+                          : "bg-black/50 border-white/10 text-concrete hover:text-white hover:border-white/30 hover:bg-white/5"
+                      }`}
+                    >
+                      <span>{icon}</span>
+                      <span className="truncate max-w-[180px]">{layer.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Card Cirúrgico de Origem do Código */}
           {targetElement && (
             <div className="p-3.5 bg-black/50 border border-cyan-500/30 rounded-xl space-y-2.5 shadow-inner">
@@ -137,11 +228,11 @@ export function FeedbackModal({
 
               {/* Componente React e Stack */}
               <div className="space-y-1 text-xs">
-                {codeLoc?.componentName && (
+                {(targetElement.parentComponent || codeLoc?.componentName) && (
                   <div className="flex items-center gap-1.5 text-concrete">
                     <span className="text-white/60">Componente:</span>
                     <span className="font-mono font-bold text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-800/40">
-                      &lt;{codeLoc.componentName} /&gt;
+                      &lt;{targetElement.parentComponent || codeLoc?.componentName} /&gt;
                     </span>
                   </div>
                 )}
@@ -271,7 +362,7 @@ export function FeedbackModal({
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ex: Este ícone deve abrir um modal de confirmação antes de excluir..."
+              placeholder="Ex: Este container/card deve fechar ao clicar fora..."
               className="w-full px-3.5 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-concrete/50 focus:outline-none focus:border-vulcanico transition-colors custom-scrollbar resize-none"
             />
           </div>

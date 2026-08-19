@@ -16,7 +16,7 @@ export function PlanEditorView(props: any) {
     <>
       {/* -------------------- PLAN BUILDER OVERLAY -------------------- */}
       {editingPlan && !configuringExercise && !addingExerciseToWorkoutId && (
-        <div className="absolute inset-0 z-40 bg-noturno flex flex-col overflow-hidden">
+        <div className="absolute inset-0 z-40 bg-noturno flex flex-col overflow-hidden" data-component="PlanEditorView">
           
           {editingWorkoutId ? (() => {
             const editingWorkout = editingPlan.workouts.find(w => w.id === editingWorkoutId);

@@ -45,7 +45,7 @@ export const AthleteInputDropdown: React.FC<AthleteInputDropdownProps> = ({
   );
 
   return (
-    <div className="relative flex flex-col gap-1.5 w-full" ref={containerRef}>
+    <div className="relative flex flex-col gap-1.5 w-full" ref={containerRef} data-component="AthleteInputDropdown">
       <div className="flex justify-between items-center px-0.5">
         <label className={`font-mono text-[10px] uppercase font-bold tracking-wider ${labelColor}`}>
           {label}

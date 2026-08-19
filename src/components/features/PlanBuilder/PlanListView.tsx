@@ -18,7 +18,7 @@ export function PlanListView(props: any) {
 
   return (
     <>
-        <div className="p-6 flex flex-col lg:flex-row gap-8 lg:gap-16 min-h-full max-w-[1920px] mx-auto w-full">
+        <div className="p-6 flex flex-col lg:flex-row gap-8 lg:gap-16 min-h-full max-w-[1920px] mx-auto w-full" data-component="PlanListView">
           
           {/* SIDEBAR DE PLANOS (Esquerda no Desktop) */}
           <div className="w-full lg:w-[350px] shrink-0 flex flex-col">
