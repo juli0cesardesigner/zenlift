@@ -10,7 +10,7 @@ import { ExerciseLibraryView } from '../components/features/ExerciseLibrary/Exer
 import { HistoryView } from '../components/features/History/HistoryView';
 import { WorkoutShareModal } from '../components/ui/WorkoutShareModal';
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { 
   Play,
   CheckSquare, 
@@ -75,6 +75,52 @@ export default function AppContainer() {
   const [reviewDate, setReviewDate] = useState("");
   const [reviewTime, setReviewTime] = useState("");
   const [reviewDurationMins, setReviewDurationMins] = useState("");
+
+  // Per-Partner Historical Performance Lookup
+  const getPartnerPerformance = useCallback((exerciseName: string, partnerName?: string) => {
+    const performances: { weight: number; reps: number; date: number }[] = [];
+    
+    history.filter(log => !log.isDeleted && (log.workoutType || "rotina") === "rotina").forEach(log => {
+      let partnerRole: "p1" | "p2" | "any" = "any";
+
+      if (partnerName && partnerName.trim()) {
+        const target = partnerName.trim().toLowerCase();
+        const p1 = log.partner1Name?.trim().toLowerCase();
+        const p2 = log.partner2Name?.trim().toLowerCase();
+
+        if (log.sessionMode === "dual") {
+          if (p1 === target) partnerRole = "p1";
+          else if (p2 === target) partnerRole = "p2";
+          else return; // Partner didn't participate in this log!
+        } else {
+          if (p1 && p1 !== target) partnerRole = "any";
+        }
+      }
+
+      log.exercises.forEach(he => {
+        if (he.name === exerciseName) {
+          let maxW = 0;
+          let maxR = 0;
+          he.sets.forEach(hs => {
+            const rawW = partnerRole === "p2" ? (hs.weightP2 || hs.weight) : hs.weight;
+            const rawR = partnerRole === "p2" ? (hs.repsP2 || hs.reps) : hs.reps;
+            const w = parseFloat(rawW) || 0;
+            const r = parseInt(rawR) || 0;
+            if (w > maxW || (w === maxW && r > maxR)) {
+              maxW = w;
+              maxR = r;
+            }
+          });
+          if (maxW > 0) {
+            performances.push({ weight: maxW, reps: maxR, date: log.date });
+          }
+        }
+      });
+    });
+
+    performances.sort((a, b) => b.date - a.date);
+    return performances;
+  }, [history]);
 
   // Active Workout Session
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkoutSession | null>(null);
@@ -2088,52 +2134,6 @@ export default function AppContainer() {
         let suggestedWP2: string | undefined = undefined;
         let suggestedRP2: string | undefined = undefined;
         let overloadSuggestion: string | undefined = undefined;
-
-        // Per-Partner Historical Performance Lookup
-        const getPartnerPerformance = (exerciseName: string, partnerName?: string) => {
-          const performances: { weight: number; reps: number; date: number }[] = [];
-          
-          history.filter(log => !log.isDeleted && (log.workoutType || "rotina") === "rotina").forEach(log => {
-            let partnerRole: "p1" | "p2" | "any" = "any";
-
-            if (partnerName && partnerName.trim()) {
-              const target = partnerName.trim().toLowerCase();
-              const p1 = log.partner1Name?.trim().toLowerCase();
-              const p2 = log.partner2Name?.trim().toLowerCase();
-
-              if (log.sessionMode === "dual") {
-                if (p1 === target) partnerRole = "p1";
-                else if (p2 === target) partnerRole = "p2";
-                else return; // Partner didn't participate in this log!
-              } else {
-                if (p1 && p1 !== target) partnerRole = "any";
-              }
-            }
-
-            log.exercises.forEach(he => {
-              if (he.name === exerciseName) {
-                let maxW = 0;
-                let maxR = 0;
-                he.sets.forEach(hs => {
-                  const rawW = partnerRole === "p2" ? (hs.weightP2 || hs.weight) : hs.weight;
-                  const rawR = partnerRole === "p2" ? (hs.repsP2 || hs.reps) : hs.reps;
-                  const w = parseFloat(rawW) || 0;
-                  const r = parseInt(rawR) || 0;
-                  if (w > maxW || (w === maxW && r > maxR)) {
-                    maxW = w;
-                    maxR = r;
-                  }
-                });
-                if (maxW > 0) {
-                  performances.push({ weight: maxW, reps: maxR, date: log.date });
-                }
-              }
-            });
-          });
-
-          performances.sort((a, b) => b.date - a.date);
-          return performances;
-        };
 
         if (exDef) {
           const p1Perf = getPartnerPerformance(exDef.name, sessionMode === "dual" ? partner1Name : undefined);
